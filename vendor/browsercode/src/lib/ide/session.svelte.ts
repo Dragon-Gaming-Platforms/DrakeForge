@@ -405,6 +405,11 @@ export class IdeSession {
 		await this.runtime.startBash?.(el);
 	}
 
+	/** Source Control panel: run a git command in the runtime's Output terminal. */
+	async runGit(args: string[]): Promise<void> {
+		await this.runtime.runGit?.(args);
+	}
+
 	/** Tears down the runtime and cancels any in-flight boot. */
 	shutdown(): void {
 		this.unmounted = true;

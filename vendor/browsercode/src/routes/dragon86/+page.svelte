@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
-	import IdeShell from '$lib/components/ide/IdeShell.svelte';
+	import Dragon86IdeShell from '$lib/dragon86/components/Dragon86IdeShell.svelte';
 	import { IdeSession } from '$lib/ide/session.svelte';
 	import { POD_HOME } from '$lib/pod/fs';
 	import { appHref } from '$lib/utils/paths';
@@ -70,9 +70,9 @@
 	});
 </script>
 
-<div class="bc-page-bg relative h-full w-full overflow-hidden">
+<div class="dragon86-theme bc-page-bg relative h-full w-full overflow-hidden">
 	{#if session}
-		<IdeShell {session} />
+		<Dragon86IdeShell {session} mode="connected" title="DrakeForge" />
 	{:else if !error}
 		<div class="flex h-full items-center justify-center text-sm text-bc-mist">Starting…</div>
 	{/if}

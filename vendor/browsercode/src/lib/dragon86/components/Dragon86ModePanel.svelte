@@ -43,7 +43,9 @@
 				status.toLowerCase().includes('ready')}
 		></span>
 		<div>
-			<strong>{mode === 'connected' ? 'Dragon86 connected IDE' : 'Standalone 9p IDE'}</strong>
+			<strong class="df-title df-glow"
+				>DrakeForge · {mode === 'connected' ? 'Dragon86' : 'Standalone 9p'}</strong
+			>
 			<div class="status">{status}</div>
 		</div>
 		<a class="switch" href={mode === 'connected' ? resolve('/standalone') : resolve('/dragon86')}
@@ -80,7 +82,7 @@
 <style>
 	.mode-panel {
 		position: absolute;
-		top: 14px;
+		top: 54px;
 		right: 18px;
 		z-index: 45;
 		width: min(380px, calc(100% - 36px));
@@ -190,7 +192,7 @@
 	}
 	@media (max-width: 700px) {
 		.mode-panel {
-			top: 8px;
+			top: 48px;
 			right: 8px;
 			width: calc(100% - 16px);
 		}

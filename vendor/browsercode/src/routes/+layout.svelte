@@ -1,5 +1,6 @@
 <script lang="ts">
 	import './layout.css';
+	import '$lib/dragon86/theme.css';
 	import Icon from '@iconify/svelte';
 	import favicon from '$lib/assets/favicon.svg';
 	import Sidebar from '$lib/components/Sidebar.svelte';
@@ -71,9 +72,9 @@
 		activeTool
 			? `${activeTool.label} — BrowserCode`
 			: $page.route.id === '/dragon86'
-				? 'Connected Dragon86 IDE — DrakeForge'
+				? 'DrakeForge'
 				: $page.route.id === '/standalone'
-					? 'Standalone 9p IDE — DrakeForge'
+					? 'DrakeForge'
 					: $page.route.id?.startsWith('/ide')
 						? 'Playground IDE — BrowserCode'
 						: $page.route.id === '/agents'

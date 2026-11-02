@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
-	import IdeShell from '$lib/components/ide/IdeShell.svelte';
+	import Dragon86IdeShell from '$lib/dragon86/components/Dragon86IdeShell.svelte';
 	import { IdeSession } from '$lib/ide/session.svelte';
 	import { appHref } from '$lib/utils/paths';
 	import { dragon86ProjectSource } from '$lib/dragon86/fs/project-source';
@@ -47,9 +47,9 @@
 	});
 </script>
 
-<div class="bc-page-bg relative h-full w-full overflow-hidden">
+<div class="dragon86-theme bc-page-bg relative h-full w-full overflow-hidden">
 	{#if session}
-		<IdeShell {session} />
+		<Dragon86IdeShell {session} mode="standalone" title="DrakeForge" />
 	{:else if !error}
 		<div class="flex h-full items-center justify-center text-sm text-bc-mist">
 			Mounting standalone 9p filesystem…

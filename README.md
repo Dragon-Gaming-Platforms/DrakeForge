@@ -10,6 +10,18 @@ DrakeForge is a GitHub Pages-hosted fork of [BrowserCode](https://github.com/lea
 
 The original BrowserCode feature set is preserved: the playground IDE, Monaco editor, BrowserPod terminal, npm/dev-server previews, portals, agent CLIs, templates, GitHub clone, and Java/CheerpJ mode.
 
+## IDE layout
+
+The connected and standalone routes use a VS Code-style **DrakeForge** shell with Dragon86's "Dragon Red" palette:
+
+- a left activity bar with **Files**, **Search**, **Source Control / Git**, and **Agents** views;
+- Monaco editor and BrowserPod portal preview side by side;
+- a resizable, full-width **terminal** panel at the bottom;
+- a status bar showing the DrakeForge title, bridge mode, branch, filesystem readiness, and active port;
+- the **DrakeForge** title in the header, status bar, connection panel, and browser tab.
+
+The Git view echoes real `git status`, `log`, `add`, `commit`, `pull`, and `push` commands into the Output terminal. The Agents view links to BrowserCode's sandboxed CLI agents in new tabs so the running IDE stays alive. The upstream `/ide` and `/embed` routes keep BrowserCode's original shell and palette.
+
 ## Do I need to change Dragon86?
 
 **No — not for the connected mode.** Dragon86 already exposes `/home/user` through protocol v2 `fs1` over both of the transports used by [Cheerpx-Bridge](https://github.com/Dragon-Gaming-Platforms/Cheerpx-Bridge):

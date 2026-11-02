@@ -94,7 +94,8 @@ The sync layer is deliberately conservative: it never deletes local files merely
 - `src/lib/dragon86/bridge/` — Cheerpx-Bridge-derived v1/v2 protocol, transports, hoster handshake, fs1 client, and the BrowserPod-backed `Dragon86Bridge`.
 - `src/lib/dragon86/fs/` — `RemoteFs` interface, fs1 and 9p implementations, `SyncedWorkspaceFs`, and the `ProjectSource` adapter.
 - `src/lib/dragon86/p9/` — copied Dragon86 9p handler, literal-frame client, Worker server, and Worker transport.
-- `src/routes/dragon86/` and `src/routes/standalone/` — connected and standalone IDE shells; both reuse the unmodified `IdeShell`/`IdeSession` pipeline.
+- `src/routes/dragon86/` and `src/routes/standalone/` — connected and standalone IDE routes; both reuse the unmodified `IdeSession` boot pipeline.
+- `src/lib/dragon86/components/Dragon86IdeShell.svelte`, `GitPanel.svelte`, `AgentsPanel.svelte`, and `theme.css` — VS Code-style activity bar, functional Git/Agents views, full-width bottom terminal, status bar, and Dragon86 "Dragon Red" theming with the DrakeForge title. Upstream `IdeShell` remains unchanged for `/ide` and `/embed`.
 - `tools/p9/test.ts` — Node loopback integration test for the bundled 9p wire format.
 - `src/lib/ide/project-source.ts`, `runtime.ts`, `session.svelte.ts`, and `pod-runtime.ts` — small optional hooks for wrapping `WorkspaceFs`, watching remote trees, and attaching a hoster after BrowserPod boots.
 

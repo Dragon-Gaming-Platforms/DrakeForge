@@ -124,6 +124,11 @@ export class PodRuntime implements IdeRuntime {
 		}
 	}
 
+	/** Used by the Source Control panel; output lands in the main Output terminal. */
+	async runGit(args: string[]): Promise<void> {
+		await this.runInOutput('git', args, { cwd: this.source.workdir });
+	}
+
 	shutdown(): void {
 		if (this.pod) void shutdownPod(this.pod);
 	}
