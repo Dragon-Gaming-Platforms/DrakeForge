@@ -1,0 +1,101 @@
+import type { ThemeRegistration } from 'shiki';
+
+/**
+ * BrowserPod's own brand palette (browserpod.io's hero code editor), not the bc-* app palette —
+ * blue/periwinkle/magenta/gold/coral, offered as a distinct theme choice rather than folded into
+ * the house browsercode-dark/-light pair. See browserpod-light.ts for the light counterpart: same
+ * accents, with the plain-text/background polarity flipped for a white ground.
+ *
+ * The chrome colors below (background/gutter/widget) are the one exception: they're plain
+ * neutrals, not part of the brand palette, so they match browsercode-dark.ts's current
+ * --color-bc-terminal/-surface/-border rather than the pre-redesign shades this theme originally
+ * shipped with — otherwise the editor canvas reads as a visibly different near-black than the
+ * panels around it.
+ */
+export const browserpodDark: ThemeRegistration = {
+	name: 'browserpod-dark',
+	type: 'dark',
+	colors: {
+		'editor.background': '#0d0d0f',
+		'editor.foreground': '#d9d9d9',
+		'editorCursor.foreground': '#10b981',
+		'editor.selectionBackground': '#10b9812e',
+		'editor.inactiveSelectionBackground': '#10b9811a',
+		'editor.lineHighlightBackground': '#ffffff05',
+		'editorLineNumber.foreground': '#ffffff40',
+		'editorLineNumber.activeForeground': '#ffffff8c',
+		'editorGutter.background': '#0d0d0f',
+		'editorIndentGuide.background1': '#ffffff0a',
+		'editorIndentGuide.activeBackground1': '#ffffff1f',
+		'editorWidget.background': '#12161f',
+		'editorWidget.border': '#273249',
+		'scrollbarSlider.background': '#ffffff1f',
+		'scrollbarSlider.hoverBackground': '#ffffff38',
+		'scrollbarSlider.activeBackground': '#ffffff38',
+		'editorOverviewRuler.border': '#00000000'
+	},
+	tokenColors: [
+		{
+			scope: ['comment', 'punctuation.definition.comment'],
+			settings: { foreground: '#5c6473', fontStyle: 'italic' }
+		},
+		{
+			scope: ['string', 'string.quoted', 'string.template'],
+			settings: { foreground: '#b7cdff' }
+		},
+		{
+			scope: ['constant.character.escape', 'string.regexp'],
+			settings: { foreground: '#ffd633' }
+		},
+		{
+			scope: ['constant.numeric', 'constant.language', 'support.constant'],
+			settings: { foreground: '#c73da6' }
+		},
+		{
+			scope: ['keyword', 'keyword.control', 'storage', 'storage.type', 'storage.modifier'],
+			settings: { foreground: '#4a7dff' }
+		},
+		{
+			scope: ['keyword.operator', 'punctuation', 'meta.brace'],
+			settings: { foreground: '#7d8595' }
+		},
+		{
+			scope: ['entity.name.function', 'support.function', 'meta.function-call'],
+			settings: { foreground: '#ffd633' }
+		},
+		{
+			scope: [
+				'entity.name.type',
+				'entity.name.class',
+				'entity.other.inherited-class',
+				'support.type',
+				'support.class'
+			],
+			settings: { foreground: '#8fb0ff' }
+		},
+		{
+			scope: ['variable', 'variable.other', 'meta.definition.variable'],
+			settings: { foreground: '#d9d9d9' }
+		},
+		{
+			scope: ['variable.parameter', 'meta.object-literal.key', 'support.variable.property'],
+			settings: { foreground: '#a9b4c8' }
+		},
+		{
+			scope: ['entity.name.tag', 'punctuation.definition.tag'],
+			settings: { foreground: '#ff6161' }
+		},
+		{
+			scope: ['entity.other.attribute-name'],
+			settings: { foreground: '#ffd633' }
+		},
+		{
+			scope: ['markup.heading', 'markup.bold'],
+			settings: { foreground: '#b7cdff', fontStyle: 'bold' }
+		},
+		{
+			scope: ['invalid', 'invalid.illegal'],
+			settings: { foreground: '#ff6161' }
+		}
+	]
+};

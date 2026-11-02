@@ -1,0 +1,10 @@
+# Cross-origin isolation for SharedArrayBuffer. Do not remove.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  Cross-Origin-Resource-Policy: cross-origin
+
+# Takes an API key, so it stays unframable. Every other route carries no frame-ancestors, which
+# is what lets a host page embed /embed.
+/agents*
+  Content-Security-Policy: frame-ancestors 'self' https://browserpod.io https://*.browserpod.io https://*.browserpod.pages.dev
