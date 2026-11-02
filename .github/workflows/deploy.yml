@@ -1,0 +1,71 @@
+name: Deploy DrakeForge to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: vendor/browsercode/package-lock.json
+      - name: Install dependencies
+        working-directory: vendor/browsercode
+        run: npm ci
+      - name: Type-check
+        working-directory: vendor/browsercode
+        env:
+          PAGES_BASE: /DrakeForge
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: npm run check
+      - name: Test bundled 9p client/server
+        working-directory: vendor/browsercode
+        run: npm run test:p9
+      - name: Build static site
+        working-directory: vendor/browsercode
+        env:
+          PAGES_BASE: /DrakeForge
+          PAGES_FALLBACK: 404.html
+          VITE_API_KEY: ${{ secrets.VITE_API_KEY }}
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: npm run build
+      - name: Preserve third-party licenses
+        run: |
+          cp vendor/browsercode/static/coi-serviceworker.LICENSE vendor/browsercode/dist/
+          cp vendor/browsercode/LICENSE.txt vendor/browsercode/dist/BrowserCode-LICENSE.txt
+      - uses: actions/configure-pages@v5
+        if: github.event_name != 'pull_request'
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: vendor/browsercode/dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

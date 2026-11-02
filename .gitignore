@@ -1,0 +1,16 @@
+# Local tooling / build output. The vendored BrowserCode tree keeps its own ignore file too.
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+coverage/
+.vite/
+.svelte-kit/
+
+# Never commit secrets. The Pages workflow reads VITE_API_KEY from GitHub Actions secrets.
+vendor/browsercode/.env
+vendor/browsercode/.env.*
+!vendor/browsercode/.env.example

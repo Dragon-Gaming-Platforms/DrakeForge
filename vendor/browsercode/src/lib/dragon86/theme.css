@@ -1,0 +1,75 @@
+/* Dragon86 "Dragon Red" design tokens, lifted from Dragon-Gaming-Platforms/Dragon86
+   src/styles/theme.css (commit 6ca94b1). Applied only to the DrakeForge IDE routes so
+   the upstream BrowserCode pages keep their own palette. */
+.dragon86-theme {
+	color-scheme: dark;
+	--color-bc-abyss: #050505;
+	--color-bc-navy: #0a0a0a;
+	--color-bc-surface: #121212;
+	--color-bc-terminal: #050505;
+	--color-bc-statusbar: #0d0d0d;
+	--color-bc-azure: #ff1a2e;
+	--color-bc-mist: #aaaaaa;
+	--color-bc-orchid: #ff4d5a;
+	--color-bc-green: #7ee787;
+	--color-bc-gold: #ffd479;
+	--color-bc-coral: #ff6b6b;
+	--color-bc-border: #2a2a2a;
+	--color-bc-icon: #666666;
+	--color-bc-text: #f0f0f0;
+	--color-bc-text-muted: #666666;
+	--color-bc-link-hover: #ff4d5a;
+	--color-bc-ribbon-hover: #ffffff;
+	--color-bc-stripe: #e60012;
+	--color-bc-stripe-ink: #050505;
+	--color-bc-tint: rgb(255 255 255);
+	--bc-tint: 255 255 255;
+
+	--dragon86-primary: #e60012;
+	--dragon86-bright: #ff1a2e;
+	--dragon86-glow: #ff0033;
+	--dragon86-dark: #8b0000;
+	--dragon86-rgb: 230, 0, 18;
+
+	background: var(--color-bc-abyss);
+	color: var(--color-bc-text);
+	font-family: 'Rajdhani', 'Stack Sans Text', ui-sans-serif, system-ui, sans-serif;
+}
+
+.dragon86-theme * {
+	scrollbar-width: thin;
+	scrollbar-color: var(--dragon86-dark) var(--color-bc-abyss);
+}
+.dragon86-theme ::-webkit-scrollbar {
+	width: 6px;
+	height: 6px;
+}
+.dragon86-theme ::-webkit-scrollbar-track {
+	background: var(--color-bc-abyss);
+}
+.dragon86-theme ::-webkit-scrollbar-thumb {
+	background: var(--dragon86-dark);
+	border-radius: 4px;
+}
+.dragon86-theme ::-webkit-scrollbar-thumb:hover {
+	background: var(--dragon86-primary);
+}
+
+.dragon86-theme .df-brand,
+.dragon86-theme .df-title {
+	font-family: 'Orbitron', 'Stack Sans Text', ui-sans-serif, system-ui, sans-serif;
+	font-weight: 800;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+}
+
+.dragon86-theme .df-glow {
+	color: var(--dragon86-bright);
+	text-shadow: 0 0 12px rgba(var(--dragon86-rgb), 0.65);
+}
+
+.dragon86-theme .df-active {
+	color: var(--dragon86-bright);
+	background: rgba(var(--dragon86-rgb), 0.16);
+	box-shadow: inset 2px 0 0 var(--dragon86-primary);
+}

@@ -1,0 +1,78 @@
+/**
+ * How a project gets onto its runtime. `IdeSession` runs one boot pipeline over these hooks.
+ */
+import type { WorkspaceFs } from './workspace-fs';
+
+/** Runtime-side handles the hooks work against; the session owns the boot token. */
+export type BootContext = {
+	fs: WorkspaceFs;
+	workdir: string;
+	/** Writes raw text to the Output terminal. */
+	write: (data: string) => void;
+	/**
+	 * Runs a program on the runtime, echoed on the Output terminal. A runtime ignores the options
+	 * it has no use for.
+	 */
+	run: (
+		command: string,
+		args: string[],
+		options?: { cwd?: string; color?: boolean }
+	) => Promise<void>;
+	/** True once the boot was superseded or the session unmounted; a hook must return early. */
+	cancelled: () => boolean;
+};
+
+/**
+ * One program invocation a source asks the runtime to run, as `[program, ...args]`, plus any
+ * environment that invocation needs on top of whatever the runtime already sets.
+ */
+export type ProjectCommand = { command: string[]; env?: string[] };
+
+/** Remote files and directories for refreshable Dragon86-backed sessions. */
+export type ProjectSnapshot = { files: string[]; dirs: string[] };
+
+/** Optional bridge attached to the BrowserPod instance after boot. */
+export interface PodAttachment {
+	attach(pod: unknown): Promise<void>;
+	shutdown(): void;
+}
+
+export type ProjectSource = {
+	/** The runtime the project boots on: a BrowserPod, or CheerpJ for Java. */
+	runtime: 'pod' | 'cheerpj';
+	/** Carried into analytics and bug reports as the boot mode. */
+	id: string;
+	/** Doubles as the filename the project downloads under. */
+	label: string;
+	/** Names the hydrate step in the preview loader's boot log. */
+	hydrateLabel: string;
+	/** Where the project lands; runtime paths resolve against it. */
+	workdir: string;
+	/** Preview is pinned to this port when set. Unknown for an arbitrary repo. */
+	appPort?: number;
+	/** What this session cloned, for the bug report's repo field. */
+	repo?: { url: string; ref: string };
+	/** Fetched before the runtime boots, so the file tree renders while the project arrives. */
+	listFiles: () => Promise<string[]>;
+	hydrate: (ctx: BootContext, files: string[]) => Promise<void>;
+	/** Runs once the files are readable, before the first tab opens. */
+	prepare?: (ctx: BootContext) => Promise<void>;
+	initialFile: (files: string[]) => string | undefined;
+	/** Commands run in order before the start command. */
+	installCommands: () => ProjectCommand[];
+	/**
+	 * Command that starts the project, or null when there is nothing to run. A source returning
+	 * null has already said so on the terminal.
+	 */
+	startCommand: (ctx: BootContext) => Promise<ProjectCommand | null>;
+	/** Called once the files are readable, so a boot that dies earlier is not counted. */
+	trackBoot: () => void;
+	/** Optional wrapper around the pod's WorkspaceFs (Dragon86 sync layer). */
+	wrapFs?: (fs: WorkspaceFs) => WorkspaceFs;
+	/** Optional live file-tree updates from a remote filesystem. */
+	watchFiles?: (onChange: (snapshot: ProjectSnapshot) => void) => () => void;
+	/** Optional hoster bridge attached once BrowserPod boots. */
+	podAttachment?: PodAttachment;
+	/** Optional cleanup on IdeSession.shutdown. */
+	shutdown?: () => void;
+};
