@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { parseGitHubUrl } from '$lib/github/parse';
+	import { appHref } from '$lib/utils/paths';
 
 	let {
 		autofocus = false,
@@ -28,10 +29,11 @@
 		const { owner, repo, ref, dir } = target;
 		const path = `/ide/github/${owner}/${repo}/tree/${ref}${dir ? `/${dir}` : ''}`;
 		// Callers with a live session to protect (the Sidebar's dialog) pass their own
-		// navigateWithLeaveGuard-backed navigate; the plain /ide landing page has no session yet,
-		// so it's fine to fall back to a full reload here — still the pod-teardown mechanism.
+		// navigateWithLeaveGuard-backed navigate, which already applies the Pages base.
+		// The plain /ide landing page has no session yet, so it is fine to fall back to a
+		// full reload here — still the pod-teardown mechanism.
 		if (onNavigate) onNavigate(path);
-		else window.location.href = path;
+		else window.location.href = appHref(path);
 	}
 
 	function focusInput(el: HTMLInputElement) {

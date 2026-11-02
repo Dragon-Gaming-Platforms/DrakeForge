@@ -8,6 +8,7 @@
 	import AnnouncementBar from '$lib/components/AnnouncementBar.svelte';
 	import LeaveWarningModal from '$lib/components/LeaveWarningModal.svelte';
 	import { page } from '$app/stores';
+	import { appHref } from '$lib/utils/paths';
 	import { isEnabledTool, toolItems } from '$lib/config/tools';
 	import { stepperState } from '$lib/stores/stepper.svelte';
 	import { zenState } from '$lib/stores/zen.svelte';
@@ -22,12 +23,21 @@
 	let ribbonAboveTour = $derived(stepperState.open && stepperState.step === 5);
 
 	// Embeds render inside a host page, where none of the app chrome belongs.
-	let isEmbed = $derived($page.route.id?.startsWith('/embed') ?? false);
+	// Dragon86's optional .d86 shortcut uses ?mode=embed on the connected route.
+	let isEmbed = $derived(
+		($page.route.id?.startsWith('/embed') ?? false) ||
+			$page.url.searchParams.get('mode') === 'embed'
+	);
 
 	// Show on the landing surfaces (Home, /agents, bare /ide) and during tour step 6.
+	let isDragon86Route = $derived(
+		$page.route.id === '/dragon86' || $page.route.id === '/standalone'
+	);
+
 	let showRibbon = $derived(
 		!zenState.on &&
 			!isEmbed &&
+			!isDragon86Route &&
 			(ribbonAboveTour ||
 				$page.route.id === '/' ||
 				$page.route.id === '/agents' ||
@@ -41,7 +51,8 @@
 	let isBootedSession = $derived(
 		$page.route.id === '/agents/[tool]' ||
 			($page.route.id === '/ide' && $page.url.searchParams.has('framework')) ||
-			($page.route.id?.startsWith('/ide/') ?? false)
+			($page.route.id?.startsWith('/ide/') ?? false) ||
+			isDragon86Route
 	);
 
 	// Everywhere but a booted session (whose vertical space belongs to the terminal and editor),
@@ -59,28 +70,37 @@
 	let pageTitle = $derived(
 		activeTool
 			? `${activeTool.label} — BrowserCode`
-			: $page.route.id?.startsWith('/ide')
-				? 'Playground IDE — BrowserCode'
-				: $page.route.id === '/agents'
-					? 'Agents — BrowserCode'
-					: $page.route.id === '/privacy'
-						? 'Privacy Policy — BrowserCode'
-						: 'BrowserCode: Start coding on your browser tab'
+			: $page.route.id === '/dragon86'
+				? 'Connected Dragon86 IDE — DrakeForge'
+				: $page.route.id === '/standalone'
+					? 'Standalone 9p IDE — DrakeForge'
+					: $page.route.id?.startsWith('/ide')
+						? 'Playground IDE — BrowserCode'
+						: $page.route.id === '/agents'
+							? 'Agents — BrowserCode'
+							: $page.route.id === '/privacy'
+								? 'Privacy Policy — BrowserCode'
+								: 'DrakeForge — BrowserCode IDE for Dragon86'
 	);
 
 	let pageDescription = $derived(
 		activeTool
 			? `Run ${activeTool.label} in your browser, on BrowserCode.`
-			: $page.route.id?.startsWith('/ide')
-				? 'Build and preview web apps right in your browser, on BrowserCode.'
-				: $page.route.id === '/agents'
-					? 'Use your favorite CLI agents without any installations, sandboxed.'
-					: $page.route.id === '/privacy'
-						? 'How Leaning Technologies handles your data when you use BrowserCode.'
-						: 'BrowserCode runs a multi-language WebAssembly sandbox in your browser tab. No installs, no servers, no cloud compute.'
+			: $page.route.id === '/dragon86'
+				? 'A full BrowserCode IDE connected to Dragon86 ZenFS over the fs1 bridge.'
+				: $page.route.id === '/standalone'
+					? 'A full BrowserCode IDE backed by a bundled in-browser 9p2000.L server.'
+					: $page.route.id?.startsWith('/ide')
+						? 'Build and preview web apps right in your browser, on BrowserCode.'
+						: $page.route.id === '/agents'
+							? 'Use your favorite CLI agents without any installations, sandboxed.'
+							: $page.route.id === '/privacy'
+								? 'How Leaning Technologies handles your data when you use BrowserCode.'
+								: 'BrowserCode with a live Dragon86 fs1 filesystem bridge and a standalone in-browser 9p server.'
 	);
 
-	let pageUrl = $derived(`https://browsercode.io${$page.url.pathname}`);
+	let pageUrl = $derived($page.url.href);
+	let ogImage = $derived(`${$page.url.origin}${appHref('/og-v2.png')}`);
 </script>
 
 <svelte:head>
@@ -89,14 +109,14 @@
 	<meta name="description" content={pageDescription} />
 	<meta property="og:title" content={pageTitle} />
 	<meta property="og:description" content={pageDescription} />
-	<meta property="og:image" content="https://browsercode.io/og-v2.png" />
+	<meta property="og:image" content={ogImage} />
 	<meta property="og:type" content="website" />
 	<meta property="og:url" content={pageUrl} />
 	<meta name="twitter:card" content="summary_large_image" />
 	<meta name="twitter:title" content={pageTitle} />
 	<meta name="twitter:description" content={pageDescription} />
-	<meta name="twitter:image" content="https://browsercode.io/og-v2.png" />
-	<meta property="twitter:domain" content="browsercode.io" />
+	<meta name="twitter:image" content={ogImage} />
+	<meta property="twitter:domain" content={$page.url.host} />
 	<meta property="twitter:url" content={pageUrl} />
 </svelte:head>
 
@@ -132,7 +152,7 @@
 		     usual top-4, and needs revisiting if the bar's copy or padding changes. -->
 		{#if showRibbon}
 			<a
-				href="https://github.com/leaningtech/browsercode"
+				href="https://github.com/Dragon-Gaming-Platforms/DrakeForge"
 				target="_blank"
 				rel="noopener noreferrer"
 				aria-label="Star this project on GitHub"

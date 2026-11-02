@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { resolve } from '$app/paths';
+	import { appHref } from '$lib/utils/paths';
 	import favicon from '$lib/assets/favicon.svg';
 	import browserpodLogo from '$lib/assets/browserpod.svg';
 	import heroDust from '$lib/assets/hero-dust.webp';
@@ -8,11 +9,11 @@
 	import { aboutPanelState } from '$lib/stores/aboutPanel.svelte';
 
 	function goAgents() {
-		window.location.href = '/agents';
+		window.location.href = appHref('/agents');
 	}
 
 	function goIde() {
-		window.location.href = '/ide';
+		window.location.href = appHref('/ide');
 	}
 
 	let panelScroll = $state<HTMLDivElement>();

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { appHref } from '$lib/utils/paths';
 	import { onMount } from 'svelte';
 	import Icon from '@iconify/svelte';
 	import ToolIcon from '$lib/components/ToolIcon.svelte';
@@ -6,7 +7,7 @@
 
 	function openTool(id: string, disabled: boolean) {
 		if (disabled) return;
-		window.location.href = `/agents/${id}`;
+		window.location.href = appHref(`/agents/${id}`);
 	}
 
 	// Split so available agents line up on their own row, separate from the "coming soon" ones.

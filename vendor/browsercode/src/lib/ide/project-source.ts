@@ -28,6 +28,15 @@ export type BootContext = {
  */
 export type ProjectCommand = { command: string[]; env?: string[] };
 
+/** Remote files and directories for refreshable Dragon86-backed sessions. */
+export type ProjectSnapshot = { files: string[]; dirs: string[] };
+
+/** Optional bridge attached to the BrowserPod instance after boot. */
+export interface PodAttachment {
+	attach(pod: unknown): Promise<void>;
+	shutdown(): void;
+}
+
 export type ProjectSource = {
 	/** The runtime the project boots on: a BrowserPod, or CheerpJ for Java. */
 	runtime: 'pod' | 'cheerpj';
@@ -58,4 +67,12 @@ export type ProjectSource = {
 	startCommand: (ctx: BootContext) => Promise<ProjectCommand | null>;
 	/** Called once the files are readable, so a boot that dies earlier is not counted. */
 	trackBoot: () => void;
+	/** Optional wrapper around the pod's WorkspaceFs (Dragon86 sync layer). */
+	wrapFs?: (fs: WorkspaceFs) => WorkspaceFs;
+	/** Optional live file-tree updates from a remote filesystem. */
+	watchFiles?: (onChange: (snapshot: ProjectSnapshot) => void) => () => void;
+	/** Optional hoster bridge attached once BrowserPod boots. */
+	podAttachment?: PodAttachment;
+	/** Optional cleanup on IdeSession.shutdown. */
+	shutdown?: () => void;
 };

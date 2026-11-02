@@ -20,6 +20,8 @@ export class PodRuntime implements IdeRuntime {
 	private pod: BrowserPod | null = null;
 	/** Created with the pod, so it never sees a pod that is not there. */
 	private podFs: PodFs | null = null;
+	/** The filesystem the session and source hooks use; a Dragon86 sync wrapper when requested. */
+	private workspaceFs: WorkspaceFs | null = null;
 	private outputTerminal: Terminal | null = null;
 	/** Set by `boot`; every later hook runs against the boot that set it. */
 	private env: RuntimeEnv | null = null;
@@ -34,6 +36,7 @@ export class PodRuntime implements IdeRuntime {
 	}
 
 	get fs(): WorkspaceFs {
+		if (this.workspaceFs) return this.workspaceFs;
 		if (!this.podFs) throw new Error('Pod is not ready yet');
 		return this.podFs;
 	}
@@ -57,11 +60,19 @@ export class PodRuntime implements IdeRuntime {
 		}
 		this.pod = pod;
 		this.podFs = new PodFs(pod);
+		this.workspaceFs = env.wrapFs ? env.wrapFs(this.podFs) : this.podFs;
 
 		this.outputTerminal = await pod.createDefaultTerminal(env.outputEl);
 		onTerminalOutput(this.outputTerminal, env.onOutput);
 		this.writeBanner();
 		await this.writeShellRc(pod);
+		if (env.podAttachment) {
+			try {
+				await env.podAttachment.attach(pod);
+			} catch (error) {
+				console.error('[drakeforge] failed to attach pod bridge', error);
+			}
+		}
 		if (env.cancelled()) return null;
 
 		pod.onPortal(({ url, port }) => {

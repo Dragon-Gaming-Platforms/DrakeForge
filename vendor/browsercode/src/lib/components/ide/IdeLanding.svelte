@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { appHref } from '$lib/utils/paths';
 	import Icon from '@iconify/svelte';
 	import { frameworkRailItems } from '$lib/config/frameworks';
 	import CloneRepoForm from './CloneRepoForm.svelte';
 
 	function openFramework(id: string) {
-		window.location.href = `/ide?framework=${id}`;
+		window.location.href = appHref(`/ide?framework=${id}`);
 	}
 
 	/** Set when ?framework= carried something we couldn't resolve, so the picker can say so. */

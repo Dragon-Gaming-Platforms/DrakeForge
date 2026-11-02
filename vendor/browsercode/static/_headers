@@ -1,10 +1,14 @@
 # Cross-origin isolation for SharedArrayBuffer. Do not remove.
+# GitHub Pages ignores this file; static/coi-serviceworker.js supplies the headers there.
 /*
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
   Cross-Origin-Resource-Policy: cross-origin
 
-# Takes an API key, so it stays unframable. Every other route carries no frame-ancestors, which
-# is what lets a host page embed /embed.
+# Agent sessions take credentials, so they stay unframable. Every other route
+# (including /dragon86 and /standalone) carries no frame-ancestors restriction.
 /agents*
-  Content-Security-Policy: frame-ancestors 'self' https://browserpod.io https://*.browserpod.io https://*.browserpod.pages.dev
+  Content-Security-Policy: frame-ancestors 'self' https://browserpod.io https://*.browserpod.io https://*.browserpod.pages.dev https://dragon-gaming-platforms.github.io
+
+/DrakeForge/agents*
+  Content-Security-Policy: frame-ancestors 'self' https://browserpod.io https://*.browserpod.io https://*.browserpod.pages.dev https://dragon-gaming-platforms.github.io

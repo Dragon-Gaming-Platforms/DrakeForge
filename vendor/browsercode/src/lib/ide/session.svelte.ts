@@ -70,6 +70,7 @@ export class IdeSession {
 
 	private unmounted = false;
 	private bootToken = 0;
+	private stopWatch: (() => void) | null = null;
 
 	constructor(source: ProjectSource) {
 		this.source = source;
@@ -120,7 +121,9 @@ export class IdeSession {
 				onOutput,
 				onSavable: () => (this.canSave = true),
 				onStage: (index) => (this.bootStage = index),
-				cancelled: () => this.cancelled(token)
+				cancelled: () => this.cancelled(token),
+				wrapFs: this.source.wrapFs,
+				podAttachment: this.source.podAttachment
 			});
 			if (!ctx) return;
 
@@ -132,6 +135,19 @@ export class IdeSession {
 			this.fsReady = true;
 			await this.source.prepare?.(ctx);
 			if (this.cancelled(token)) return;
+
+			// Remote-backed sources can refresh the tree without restarting the pod.
+			this.stopWatch =
+				this.source.watchFiles?.((snapshot) => {
+					if (this.unmounted) return;
+					this.projectFiles = snapshot.files;
+					// Keep folders created locally until the remote tree confirms them.
+					const dirs = [...this.projectDirs];
+					for (const dir of snapshot.dirs) {
+						if (!dirs.includes(dir)) dirs.push(dir);
+					}
+					this.projectDirs = dirs;
+				}) ?? null;
 
 			const initialFile = this.source.initialFile(this.projectFiles);
 			if (initialFile) await this.openFile(initialFile);
@@ -392,6 +408,9 @@ export class IdeSession {
 	/** Tears down the runtime and cancels any in-flight boot. */
 	shutdown(): void {
 		this.unmounted = true;
+		this.stopWatch?.();
+		this.stopWatch = null;
+		this.source.shutdown?.();
 		for (const file of this.openFiles) releaseImage(file.image);
 		this.bootToken += 1;
 		this.runtime.shutdown();

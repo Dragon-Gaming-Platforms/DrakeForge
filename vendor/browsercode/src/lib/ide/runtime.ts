@@ -5,7 +5,7 @@
  */
 import type { PortalUpdate } from '$lib/pod/portals';
 import type { PodBlocker } from '$lib/utils/platform';
-import type { BootContext } from './project-source';
+import type { BootContext, PodAttachment } from './project-source';
 import type { WorkspaceFs } from './workspace-fs';
 
 /**
@@ -32,14 +32,18 @@ export type RuntimeEnv = {
 	onStage: (index: number) => void;
 	/** True once the boot was superseded or the session unmounted; the runtime must stop. */
 	cancelled: () => boolean;
+	/** Optional wrapper around the pod filesystem (Dragon86 sync layer). */
+	wrapFs?: (fs: WorkspaceFs) => WorkspaceFs;
+	/** Optional hoster bridge attached after BrowserPod boots. */
+	podAttachment?: PodAttachment;
 };
 
 export interface IdeRuntime {
 	/** Throws until `boot` has brought the machine up; holds the project once the source hydrates it. */
 	readonly fs: WorkspaceFs;
 	/**
-	 * The loader's boot lines. The session reports the first two itself: `BOOTING` while `boot`
-	 * runs, `HYDRATING` while the source hydrates. `launch` and `run` report the rest.
+	 * The loader's boot lines. The session reports the first two for every runtime; the
+	 * runtime reports the last two through `launch`, naming them in `stages`.
 	 */
 	readonly stages: readonly string[];
 	/** Why this runtime cannot run in this browser, or null when it can. */

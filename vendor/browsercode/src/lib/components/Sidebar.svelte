@@ -4,6 +4,7 @@
 	import ToolIcon from '$lib/components/ToolIcon.svelte';
 	import { page } from '$app/stores';
 	import { resolve } from '$app/paths';
+	import { appHref } from '$lib/utils/paths';
 	import { toolItems } from '$lib/config/tools';
 	import { frameworkRailItems } from '$lib/config/frameworks';
 	import { trackEvent } from '$lib/utils/useLazyTracking';
@@ -18,6 +19,9 @@
 	let isHome = $derived($page.route.id === '/');
 	let isAgentsSection = $derived($page.route.id?.startsWith('/agents') ?? false);
 	let isIdeSection = $derived($page.route.id?.startsWith('/ide') ?? false);
+	let isDragon86Section = $derived(
+		$page.route.id === '/dragon86' || $page.route.id === '/standalone'
+	);
 
 	// Which agent is currently booted, if any — drives the flyout's "active" row badge only;
 	// the main button's color stays the same regardless of which one (or whether any) is running.
@@ -38,24 +42,24 @@
 	let isActiveAgentSession = $derived($page.route.id === '/agents/[tool]');
 	// A booted framework (/ide?framework=...) or cloned GitHub repo (/ide/github/...) — the bare
 	// landing picker has nothing running yet, so it's excluded.
-	let isActiveIdeSession = $derived(isIdeSection && !isIdeLandingOnly);
+	let isActiveIdeSession = $derived((isIdeSection && !isIdeLandingOnly) || isDragon86Section);
 
 	// Full reloads are deliberate here: they're the teardown mechanism for a running pod
 	// (see CLAUDE.md). Every cross-section navigation in this file goes through them. Leaving an
 	// active agent or IDE session asks for confirmation first, since it would tear down a live
 	// terminal/dev server.
 	function navigate(path: string) {
-		navigateWithLeaveGuard(path, isActiveAgentSession || isActiveIdeSession);
+		navigateWithLeaveGuard(appHref(path), isActiveAgentSession || isActiveIdeSession);
 	}
 
 	// Flyout visibility is tracked explicitly (rather than relying on CSS :hover + a bridging
 	// gap) so a brief, imperfect mouse path from the icon into a tall menu doesn't close it —
 	// mouseenter/mouseleave fire on this whole wrapper (button + menu together), and closing
 	// waits a beat in case the pointer re-enters.
-	let openFlyout = $state<'agents' | 'ide' | 'help' | null>(null);
+	let openFlyout = $state<'agents' | 'ide' | 'dragon86' | 'help' | null>(null);
 	let closeTimer: ReturnType<typeof setTimeout> | null = null;
 
-	function openFlyoutNow(id: 'agents' | 'ide' | 'help') {
+	function openFlyoutNow(id: 'agents' | 'ide' | 'dragon86' | 'help') {
 		if (closeTimer) clearTimeout(closeTimer);
 		openFlyout = id;
 	}
@@ -261,6 +265,62 @@
 					</div>
 				</div>
 			{/if}
+		</div>
+
+		<!-- Dragon86: connected fs1 bridge, or the standalone bundled 9p server. -->
+		<div
+			class="group relative flex items-center justify-center"
+			role="group"
+			onmouseenter={() => openFlyoutNow('dragon86')}
+			onmouseleave={scheduleCloseFlyout}
+		>
+			<button
+				onclick={() => navigate('/dragon86')}
+				class="relative flex w-full items-center justify-center rounded-md p-2.5 transition-all duration-150
+					{isDragon86Section
+					? 'bg-bc-azure/15 text-bc-azure'
+					: 'text-bc-icon hover:bg-bc-tint/12 hover:text-bc-text'}"
+			>
+				<Icon icon="mingcute:cloud-line" width="26" height="26" />
+			</button>
+			<div
+				class="absolute top-0 left-full z-50 w-56 pl-2 opacity-0 transition-opacity duration-100 {openFlyout ===
+				'dragon86'
+					? 'visible opacity-100'
+					: 'invisible'}"
+			>
+				<div
+					class="solid-panel rounded-lg border border-bc-border p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.55)]"
+				>
+					<div
+						class="px-2 pt-1 pb-1.5 text-[10px] font-medium tracking-widest text-bc-mist/50 uppercase"
+					>
+						Dragon86
+					</div>
+					<button
+						type="button"
+						onclick={() => navigate('/dragon86')}
+						class="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12.5px] text-bc-mist transition hover:bg-bc-border hover:text-bc-text"
+					>
+						<span
+							class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-bc-azure/10"
+						>
+							<Icon icon="mingcute:link-line" width="14" height="14" />
+						</span>
+						<span class="flex-1 truncate">Connect to Dragon86</span>
+					</button>
+					<button
+						type="button"
+						onclick={() => navigate('/standalone')}
+						class="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12.5px] text-bc-mist transition hover:bg-bc-border hover:text-bc-text"
+					>
+						<span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-bc-tint/5">
+							<Icon icon="mingcute:hard-disk-line" width="14" height="14" />
+						</span>
+						<span class="flex-1 truncate">Standalone 9p IDE</span>
+					</button>
+				</div>
+			</div>
 		</div>
 	</nav>
 
