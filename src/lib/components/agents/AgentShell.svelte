@@ -1,0 +1,257 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import Icon from '@iconify/svelte';
+	import type { AgentSession } from '$lib/agents/session.svelte';
+	import Portal from '$lib/components/Portal.svelte';
+	import Terminal from '$lib/components/Terminal.svelte';
+	import ZenToggle from '$lib/components/ZenToggle.svelte';
+	import EmbedBadge from '$lib/components/EmbedBadge.svelte';
+	import { openTour } from '$lib/stores/stepper.svelte';
+	import { PortalState } from '$lib/stores/portals.svelte';
+	import { zenState } from '$lib/stores/zen.svelte';
+	import { startDrag } from '$lib/utils/drag';
+	import { podBlocker, type PodBlocker } from '$lib/utils/platform';
+	import PodBlockerOverlay from '$lib/components/PodBlockerOverlay.svelte';
+	import { FULL_SHELL, type ShellOptions } from '$lib/ide/shell-options';
+	import { watchIsMobile } from '$lib/utils/viewport';
+	import CredentialGateOverlay from './CredentialGateOverlay.svelte';
+	import PiLoginTip from './PiLoginTip.svelte';
+	import TerminalTip from './TerminalTip.svelte';
+	import ToolMenuSheet from './ToolMenuSheet.svelte';
+
+	// `shell` narrows what renders; the agents page omits it and gets the lot. Agents read the
+	// preview and tools fields only, the terminal being the session itself.
+	let { session, shell = FULL_SHELL }: { session: AgentSession; shell?: ShellOptions } = $props();
+
+	/** The div the pod's terminal attaches to, rendered by Terminal.svelte. */
+	let consoleEl = $state<HTMLElement | null>(null);
+	let containerEl = $state<HTMLElement | null>(null);
+
+	let isPortalVisible = $state(true);
+	let portalFraction = $state(0.5);
+	let isDragging = $state(false);
+
+	let blocker = $state<PodBlocker | null>(null);
+
+	let isMobile = $state(false);
+	let activeMobileView = $state<'terminal' | 'preview'>('terminal');
+
+	// Auto-show the preview on desktop, switch to it on mobile (first portal only), and hide
+	// the pane again when the last portal goes away; the IDE shell instead pins its preview
+	// to the framework's declared app port.
+	const portal = new PortalState({
+		onActivate: (count) => {
+			if (!isMobile) isPortalVisible = true;
+			else if (count === 1) activeMobileView = 'preview';
+		},
+		onEmpty: () => (isPortalVisible = false)
+	});
+
+	let showToolMenu = $state(false);
+	let tipDismissed = $state(false);
+	let piTipDismissed = $state(false);
+	// Shown on every boot, not just the first ever visit, but not in a tab that booted nothing.
+	let showTerminalTip = $derived(session.lock === 'held' && !tipDismissed);
+	// Pi's account sign-in has a sandbox-specific gotcha (see PiLoginTip) worth surfacing up front.
+	let showPiLoginTip = $derived(session.id === 'pi' && session.lock === 'held' && !piTipDismissed);
+
+	function startPortalDrag(event: MouseEvent): void {
+		isDragging = true;
+		const startFrac = portalFraction;
+		const totalW = containerEl?.clientWidth ?? 1;
+
+		startDrag(event, {
+			cursor: 'col-resize',
+			// The pane is anchored right, so a rightward drag shrinks it.
+			move: (dx) => {
+				portalFraction = Math.max(0.2, Math.min(0.8, startFrac - dx / totalW));
+			},
+			end: () => (isDragging = false)
+		});
+	}
+
+	// Any keypress means they've already found the terminal. Guarded, so one that lands while the
+	// tab lock is still pending does not dismiss a tip that has yet to appear. The Pi login tip
+	// isn't about the terminal itself, so it stays up until its own close button is clicked.
+	function dismissTerminalTip(): void {
+		if (showTerminalTip) tipDismissed = true;
+	}
+
+	function selectTool(id: string): void {
+		session.switchTo(id);
+		showToolMenu = false;
+	}
+
+	onMount(() => {
+		const unwatchIsMobile = watchIsMobile((mobile) => (isMobile = mobile));
+
+		// A pod that cannot run here fails deep inside the boot, leaving a blank terminal.
+		blocker = podBlocker();
+		if (!blocker) {
+			if (consoleEl) session.boot(consoleEl, portal.apply);
+			else console.error('Terminal container is not ready yet');
+		}
+
+		return () => {
+			// Never leave the global chrome hidden after navigating away from an agent session.
+			zenState.on = false;
+			unwatchIsMobile();
+			portal.dispose();
+			session.shutdown();
+		};
+	});
+</script>
+
+<svelte:window onkeydown={dismissTerminalTip} />
+
+<div class="relative min-h-0 flex-1 overflow-hidden" bind:this={containerEl}>
+	{#if blocker}
+		<PodBlockerOverlay {blocker} />
+	{/if}
+
+	<!-- Hidden, never unmounted: the pod attaches its terminal to this div for the session's life. -->
+	<div
+		class="absolute inset-0 bg-bc-terminal"
+		class:hidden={isMobile && activeMobileView !== 'terminal'}
+	>
+		<Terminal bind:consoleEl />
+	</div>
+
+	<!-- Attribution: an agent shell is all terminal, so the badge floats. It takes the corner the
+	     zen toggle holds in the playground, the two never rendering together. -->
+	{#if shell.brand}
+		<EmbedBadge floating class="absolute right-4 bottom-4 z-30" />
+	{/if}
+
+	<!-- Zen toggle: the agents view has no icon rail, so this floating control is the
+	     always-visible way in and out. Desktop only. -->
+	{#if !isMobile && shell.tools}
+		<ZenToggle
+			baseClass="absolute right-4 bottom-4 z-30 flex items-center justify-center rounded-lg border p-2 backdrop-blur-sm transition"
+			activeClass="border-bc-azure/40 bg-bc-azure/20 text-bc-azure"
+			idleClass="border-white/10 bg-black/40 text-white/40 hover:bg-black/60 hover:text-white/70"
+		/>
+	{/if}
+
+	<!-- The env-bound secret can only change via a relaunch, so the way in is always here. -->
+	{#if session.gate && session.credential}
+		<button
+			onclick={session.gate.openChange}
+			aria-label={session.credential.label}
+			title={session.credential.label}
+			class="absolute bottom-4 left-4 z-30 flex items-center justify-center rounded-lg border border-white/10 bg-black/40 p-2 text-white/40 backdrop-blur-sm transition hover:bg-black/60 hover:text-white/70"
+		>
+			<Icon icon="mingcute:key-2-line" width="18" height="18" />
+		</button>
+
+		{#if session.gate.overlayVisible}
+			<CredentialGateOverlay
+				gate={session.gate}
+				tool={session.tool}
+				credential={session.credential}
+				onRestart={session.restart}
+				onCancel={shell.tools ? session.leave : undefined}
+			/>
+		{/if}
+	{/if}
+
+	<!-- Non-blocking tips, stacked so either can be dismissed on its own without leaving a gap -->
+	{#if (showTerminalTip || showPiLoginTip) && !(isMobile && activeMobileView !== 'terminal')}
+		<div
+			class="pointer-events-none absolute inset-x-0 top-4 z-30 flex flex-col items-center gap-3 px-4"
+		>
+			{#if showTerminalTip}
+				<TerminalTip onDismiss={() => (tipDismissed = true)} />
+			{/if}
+			{#if showPiLoginTip}
+				<PiLoginTip onDismiss={() => (piTipDismissed = true)} />
+			{/if}
+		</div>
+	{/if}
+
+	{#if !isMobile && shell.preview && portal.portals.length > 0 && isPortalVisible}
+		<button
+			class="group absolute top-0 bottom-0 z-20 w-1.25 cursor-col-resize"
+			style="right: calc({portalFraction * 100}% - 0.625rem);"
+			onmousedown={startPortalDrag}
+			tabindex="0"
+			aria-label="Resize preview panel"
+		>
+			<div
+				class="absolute top-0 bottom-0 left-0.5 w-px rounded-full transition-[background] duration-150 {isDragging
+					? 'bg-bc-tint/25'
+					: 'bg-bc-tint/7 group-hover:bg-bc-tint/25'}"
+			></div>
+		</button>
+
+		<div
+			class="absolute top-0 right-0 bottom-0 min-w-0 overflow-hidden border-l border-bc-border"
+			class:pointer-events-none={isDragging}
+			style="width: {portalFraction * 100}%;"
+		>
+			<Portal {portal} />
+		</div>
+	{:else if isMobile && shell.preview && portal.portals.length > 0 && activeMobileView === 'preview'}
+		<div class="absolute inset-0 overflow-hidden">
+			<Portal {portal} />
+		</div>
+	{/if}
+</div>
+
+{#if isMobile}
+	{#if showToolMenu && shell.tools}
+		<ToolMenuSheet
+			activeId={session.id}
+			onSelect={selectTool}
+			onClose={() => (showToolMenu = false)}
+		/>
+	{/if}
+
+	<nav
+		class="flex shrink-0 items-stretch border-t border-bc-border bg-bc-surface"
+		style="height: calc(52px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);"
+	>
+		{#if shell.tools}
+			<button
+				onclick={() => (showToolMenu = !showToolMenu)}
+				class="flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 border-none transition-colors {showToolMenu
+					? 'text-bc-text'
+					: 'text-bc-icon hover:text-bc-mist'}"
+			>
+				<Icon icon="mingcute:menu-line" width="20" height="20" />
+				<span class="text-[10px] font-medium tracking-wide">Tools</span>
+			</button>
+		{/if}
+		<button
+			onclick={() => (activeMobileView = 'terminal')}
+			class="flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 border-none transition-colors {activeMobileView ===
+			'terminal'
+				? 'text-bc-text'
+				: 'text-bc-icon hover:text-bc-mist'}"
+		>
+			<Icon icon="mingcute:terminal-line" width="20" height="20" />
+			<span class="text-[10px] font-medium tracking-wide">Terminal</span>
+		</button>
+		{#if shell.preview && portal.portals.length > 0}
+			<button
+				onclick={() => (activeMobileView = 'preview')}
+				class="flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 border-none transition-colors {activeMobileView ===
+				'preview'
+					? 'text-bc-text'
+					: 'text-bc-icon hover:text-bc-mist'}"
+			>
+				<Icon icon="mingcute:eye-2-line" width="20" height="20" />
+				<span class="text-[10px] font-medium tracking-wide">Preview</span>
+			</button>
+		{/if}
+		{#if shell.tools}
+			<button
+				onclick={openTour}
+				class="flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 border-none text-bc-icon transition-colors hover:text-bc-mist"
+			>
+				<Icon icon="mingcute:question-line" width="20" height="20" />
+				<span class="text-[10px] font-medium tracking-wide">Help</span>
+			</button>
+		{/if}
+	</nav>
+{/if}
