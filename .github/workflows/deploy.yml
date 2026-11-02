@@ -3,6 +3,8 @@ name: Deploy DrakeForge to GitHub Pages
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -49,13 +51,16 @@ jobs:
           cp vendor/browsercode/static/coi-serviceworker.LICENSE vendor/browsercode/dist/
           cp vendor/browsercode/LICENSE.txt vendor/browsercode/dist/BrowserCode-LICENSE.txt
       - uses: actions/configure-pages@v5
+        if: github.event_name != 'pull_request'
         with:
           enablement: true
       - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
         with:
           path: vendor/browsercode/dist
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:
