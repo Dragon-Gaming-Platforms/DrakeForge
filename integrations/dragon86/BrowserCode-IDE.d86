@@ -2,21 +2,21 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>BrowserCode IDE for Dragon86</title>
+<title>DrakeForge for Dragon86</title>
 </head>
 <body style="margin:0">
 <!--
   Optional, no-code-change Dragon86 integration.
 
   Copy this file into Dragon86's ~/system/apps/ (or open it from Files) to launch the
-  connected IDE in a Dragon86 window. The URL is same-origin with Dragon86's Pages site,
-  which is what allows postMessage and the fs1 bridge to work. `cross-origin-isolated`
-  is delegated because BrowserPod needs SharedArrayBuffer; Dragon86's own coi-serviceworker
-  isolates the top page.
+  unified DrakeForge workspace in a Dragon86 window. The root URL is same-origin with
+  Dragon86's Pages site, which is what allows postMessage and the fs1 bridge to work.
+  `cross-origin-isolated` is delegated because BrowserPod needs SharedArrayBuffer;
+  Dragon86's own coi-serviceworker isolates the top page.
 -->
 <iframe
-  src="https://dragon-gaming-platforms.github.io/DrakeForge/dragon86?mode=embed"
-  title="BrowserCode IDE for Dragon86"
+  src="https://dragon-gaming-platforms.github.io/DrakeForge/?mode=embed"
+  title="DrakeForge workspace for Dragon86"
   style="border:0;display:block;width:100vw;height:100vh"
   allow="cross-origin-isolated; clipboard-read; clipboard-write; fullscreen"
 ></iframe>

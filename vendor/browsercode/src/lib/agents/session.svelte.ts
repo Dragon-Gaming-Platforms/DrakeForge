@@ -20,6 +20,12 @@ import { CredentialGate } from './credential-gate.svelte';
 /** `pending` covers the wait on the lock, which resolves after a grace period rather than at once. */
 export type LockState = 'pending' | 'held' | 'taken';
 
+export type AgentSessionOptions = {
+	leaveGuard?: boolean;
+	/** Embedded hosts can relaunch the CLI without reloading the whole workspace tab. */
+	onRestart?: () => void;
+};
+
 /** Owns one agent CLI session. */
 export class AgentSession {
 	readonly id: ToolId;
@@ -34,9 +40,11 @@ export class AgentSession {
 	private disposeLeaveGuard: () => void = () => {};
 
 	private readonly leaveGuard: boolean;
+	private readonly onRestart: (() => void) | undefined;
 
-	constructor(requestedTool: string | undefined, options: { leaveGuard?: boolean } = {}) {
+	constructor(requestedTool: string | undefined, options: AgentSessionOptions = {}) {
 		this.leaveGuard = options.leaveGuard ?? true;
+		this.onRestart = options.onRestart;
 		this.id = resolveToolId(requestedTool);
 		// resolveToolId only ever returns an id that is in toolItems, so this always resolves.
 		this.tool = toolItems.find((item) => item.id === this.id)!;
@@ -82,6 +90,10 @@ export class AgentSession {
 
 	/** The CLI reads its credential at launch, so both a new secret and a retry need a fresh load. */
 	restart = (): void => {
+		if (this.onRestart) {
+			this.onRestart();
+			return;
+		}
 		markIntentionalNavigation();
 		window.location.reload();
 	};

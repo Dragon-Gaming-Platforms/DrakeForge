@@ -1,8 +1,52 @@
-/* Dragon86 "Dragon Red" design tokens, lifted from Dragon-Gaming-Platforms/Dragon86
-   src/styles/theme.css (commit 6ca94b1). Applied only to the DrakeForge IDE routes so
-   the upstream BrowserCode pages keep their own palette. */
-.dragon86-theme {
+/* ================================================================
+   DRAKEFORGE — DRAGON86 DESIGN TOKENS
+   Modelled on Dragon-Gaming-Platforms/Dragon86 src/styles/theme.css
+   and src/styles/os.css (upstream e30b868), plus VS Code's shell layout.
+   These are the real Dragon86 "Dragon Red" hex codes, applied globally.
+   ================================================================ */
+
+:root,
+:root[data-theme='light'] {
 	color-scheme: dark;
+	--theme-primary: #e60012;
+	--theme-bright: #ff1a2e;
+	--theme-glow: #ff0033;
+	--theme-dark: #8b0000;
+	--theme-dim: #4a0000;
+	--theme-accent: #ff4d5a;
+	--theme-gold: #ffd479;
+	--theme-rgb: 230, 0, 18;
+	--bg-darkest: #050505;
+	--bg-dark: #0a0a0a;
+	--bg-card: #0d0d0d;
+	--bg-card-hover: #141414;
+	--bg-surface: #121212;
+	--border-color: #1a1a1a;
+	--border-color-light: #2a2a2a;
+	--text-primary: #f0f0f0;
+	--text-secondary: #aaaaaa;
+	--text-dim: #666666;
+	--font-heading: 'Orbitron', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+	--font-body: 'Rajdhani', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+	--font-mono: 'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace;
+	--taskbar-h: 52px;
+	--t-fast: 0.2s ease;
+	--t-med: 0.35s ease;
+
+	/* VS Code-ish surfaces built from Dragon86 tokens. */
+	--vs-titlebar: #050505;
+	--vs-activity: #0a0a0a;
+	--vs-sidebar: #0d0d0d;
+	--vs-editor: #050505;
+	--vs-panel: #0a0a0a;
+	--vs-tab-active: #121212;
+	--vs-tab-inactive: #0a0a0a;
+	--vs-border: #2a2a2a;
+	--vs-statusbar: linear-gradient(135deg, #e60012, #4a0000);
+	--vs-accent: #ff1a2e;
+	--vs-accent-glow: rgba(230, 0, 18, 0.45);
+
+	/* BrowserCode's token names, re-themed to the same palette. */
 	--color-bc-abyss: #050505;
 	--color-bc-navy: #0a0a0a;
 	--color-bc-surface: #121212;
@@ -24,52 +68,108 @@
 	--color-bc-stripe-ink: #050505;
 	--color-bc-tint: rgb(255 255 255);
 	--bc-tint: 255 255 255;
-
-	--dragon86-primary: #e60012;
-	--dragon86-bright: #ff1a2e;
-	--dragon86-glow: #ff0033;
-	--dragon86-dark: #8b0000;
-	--dragon86-rgb: 230, 0, 18;
-
-	background: var(--color-bc-abyss);
-	color: var(--color-bc-text);
-	font-family: 'Rajdhani', 'Stack Sans Text', ui-sans-serif, system-ui, sans-serif;
 }
 
-.dragon86-theme * {
-	scrollbar-width: thin;
-	scrollbar-color: var(--dragon86-dark) var(--color-bc-abyss);
+html,
+body {
+	background-color: var(--bg-darkest);
+	color: var(--text-primary);
+	font-family: var(--font-body);
 }
-.dragon86-theme ::-webkit-scrollbar {
+
+::selection {
+	background: rgba(var(--theme-rgb), 0.35);
+	color: #fff;
+}
+
+::-webkit-scrollbar {
 	width: 6px;
 	height: 6px;
 }
-.dragon86-theme ::-webkit-scrollbar-track {
-	background: var(--color-bc-abyss);
+::-webkit-scrollbar-track {
+	background: var(--bg-darkest);
 }
-.dragon86-theme ::-webkit-scrollbar-thumb {
-	background: var(--dragon86-dark);
+::-webkit-scrollbar-thumb {
+	background: var(--theme-dark);
 	border-radius: 4px;
 }
-.dragon86-theme ::-webkit-scrollbar-thumb:hover {
-	background: var(--dragon86-primary);
+::-webkit-scrollbar-thumb:hover {
+	background: var(--theme-primary);
 }
 
-.dragon86-theme .df-brand,
-.dragon86-theme .df-title {
-	font-family: 'Orbitron', 'Stack Sans Text', ui-sans-serif, system-ui, sans-serif;
+/* Shared Dragon86 controls, lifted from theme.css and os.css. */
+.df-heading {
+	font-family: var(--font-heading);
 	font-weight: 800;
-	letter-spacing: 0.14em;
+	letter-spacing: 1.2px;
 	text-transform: uppercase;
 }
-
-.dragon86-theme .df-glow {
-	color: var(--dragon86-bright);
-	text-shadow: 0 0 12px rgba(var(--dragon86-rgb), 0.65);
+.df-mono {
+	font-family: var(--font-mono);
 }
-
-.dragon86-theme .df-active {
-	color: var(--dragon86-bright);
-	background: rgba(var(--dragon86-rgb), 0.16);
-	box-shadow: inset 2px 0 0 var(--dragon86-primary);
+.df-glow {
+	color: var(--theme-bright);
+	text-shadow: 0 0 10px rgba(var(--theme-rgb), 0.65);
+}
+.df-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	font-family: var(--font-heading);
+	font-size: 0.68rem;
+	font-weight: 700;
+	letter-spacing: 0.8px;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+	background: rgba(var(--theme-rgb), 0.08);
+	border: 1px solid rgba(var(--theme-rgb), 0.25);
+	padding: 7px 11px;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: var(--t-fast);
+}
+.df-btn:hover {
+	color: var(--theme-bright);
+	background: rgba(var(--theme-rgb), 0.18);
+	border-color: var(--theme-primary);
+	box-shadow: 0 0 15px rgba(var(--theme-rgb), 0.2);
+}
+.df-btn.primary {
+	background: var(--theme-primary);
+	border-color: var(--theme-primary);
+	color: #fff;
+}
+.df-input {
+	font-family: var(--font-body);
+	font-weight: 500;
+	color: var(--text-primary);
+	background: var(--bg-darkest);
+	border: 1px solid var(--border-color-light);
+	border-radius: 6px;
+	padding: 7px 10px;
+	outline: none;
+	transition: var(--t-fast);
+}
+.df-input:focus {
+	border-color: var(--theme-primary);
+	box-shadow: 0 0 12px rgba(var(--theme-rgb), 0.25);
+}
+.df-card {
+	background: var(--bg-card);
+	border: 1px solid var(--border-color);
+	border-radius: 6px;
+}
+.df-radial-bg {
+	background:
+		radial-gradient(ellipse at 20% 50%, rgba(var(--theme-rgb), 0.08) 0%, transparent 60%),
+		radial-gradient(ellipse at 80% 20%, rgba(var(--theme-rgb), 0.05) 0%, transparent 50%),
+		radial-gradient(ellipse at 50% 100%, rgba(var(--theme-rgb), 0.06) 0%, transparent 60%),
+		var(--bg-darkest);
+}
+.df-active {
+	border-color: var(--theme-primary);
+	color: var(--theme-bright);
+	background: rgba(var(--theme-rgb), 0.2);
+	box-shadow: 0 0 15px rgba(var(--theme-rgb), 0.22);
 }
