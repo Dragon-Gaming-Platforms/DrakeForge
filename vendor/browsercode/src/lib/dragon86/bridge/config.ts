@@ -18,6 +18,27 @@ export const FS_CAP = 'fs1';
 /** Same-origin tab-mode channel. BroadcastChannel is scoped to the origin, not the path. */
 export const BROADCAST_CHANNEL_NAME = 'dragon86-hoster-v1';
 
+/**
+ * Prefix for a Dragon86 agent-assigned dedicated session channel. The UUID is
+ * supplied by Dragon86 so several DrakeForge engine tabs can coexist without
+ * seeing each other's hello/ready or fs1 traffic.
+ */
+export const SESSION_CHANNEL_PREFIX = 'dragon86-drakeforge-';
+export const SESSION_CHANNEL_PATTERN =
+	/^dragon86-drakeforge-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Validate an agent-supplied session channel; throws rather than falling back to default. */
+export function normalizeSessionChannel(value: string | null | undefined): string | null {
+	if (value === null || value === undefined || value === '') return null;
+	const channel = value.trim();
+	if (!SESSION_CHANNEL_PATTERN.test(channel)) {
+		throw new Error(
+			`Invalid Dragon86 session channel. Expected ${SESSION_CHANNEL_PREFIX}<uuid>, got "${value}".`
+		);
+	}
+	return channel;
+}
+
 /** Production Dragon86 Pages URL, exposed as a copyable setup link. */
 export const DEFAULT_DRAGON86_URL = 'https://dragon-gaming-platforms.github.io/Dragon86/';
 

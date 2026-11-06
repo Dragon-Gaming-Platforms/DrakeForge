@@ -4,16 +4,22 @@
 	 * the IdeSession; every view (files, search, git, agents, terminal, preview)
 	 * is rendered by the VS Code-style shell below. No route opens a second tab.
 	 */
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/stores';
 	import { appHref } from '$lib/utils/paths';
 	import { IdeSession } from '$lib/ide/session.svelte';
 	import { POD_HOME } from '$lib/pod/fs';
 	import { DEFAULT_REMOTE_ROOT } from '$lib/dragon86/bridge/config';
 	import { Dragon86Bridge } from '$lib/dragon86/bridge/dragon86Bridge';
+	import { resolveBridgeSession, type BridgeSessionConfig } from '$lib/dragon86/bridge/session';
 	import { Fs1RemoteFs } from '$lib/dragon86/fs/fs1-remote-fs';
 	import { dragon86ProjectSource } from '$lib/dragon86/fs/project-source';
 	import { normalizeRemoteRoot } from '$lib/dragon86/fs/remote-fs';
+	import type {
+		SyncController,
+		SyncIssue,
+		SyncResolution
+	} from '$lib/dragon86/fs/synced-workspace-fs';
 	import { createP9RemoteFs } from '$lib/dragon86/fs/p9-remote-fs';
 	import { createStandaloneP9Client } from '$lib/dragon86/p9/worker-client';
 	import { resolveToolId } from '$lib/config/tools';
@@ -41,6 +47,9 @@
 	let status = $state('Starting DrakeForge…');
 	let peer = $state('Waiting for filesystem');
 	let fsState = $state('Booting');
+	let bridgeSession = $state<BridgeSessionConfig | null>(null);
+	let syncIssues = $state<SyncIssue[]>([]);
+	let syncController = $state<SyncController | null>(null);
 
 	let root = DEFAULT_REMOTE_ROOT;
 	try {
@@ -49,23 +58,48 @@
 		fsState = reason instanceof Error ? reason.message : String(reason);
 	}
 
+	try {
+		const initialMode = untrack(() => effectiveMode);
+		const sessionConfig =
+			initialMode === 'connected' ? resolveBridgeSession($page.url.searchParams) : null;
+		bridgeSession = sessionConfig;
+		if (sessionConfig) peer = sessionConfig.label;
+	} catch (reason) {
+		error = reason instanceof Error ? reason.message : String(reason);
+		status = 'Invalid Dragon86 session channel';
+		peer = 'No bridge transport opened';
+		fsState = 'Unavailable';
+	}
+
 	function switchMode(next: Mode): void {
 		const url = new URL(appHref('/'), $page.url.origin);
 		if (next === 'standalone') url.searchParams.set('mode', 'standalone');
 		if (requestedRoot) url.searchParams.set('root', requestedRoot);
+		if (next === 'connected' && bridgeSession?.sessionChannel)
+			url.searchParams.set('channel', bridgeSession.sessionChannel);
 		window.location.href = url.href;
 	}
 
+	async function resolveSyncIssue(id: string, strategy: SyncResolution): Promise<void> {
+		await syncController?.resolve(id, strategy);
+	}
+
 	onMount(() => {
+		if (error) return;
 		let bridge: Dragon86Bridge | null = null;
 		void (async () => {
 			try {
 				if (effectiveMode === 'connected') {
-					bridge = new Dragon86Bridge(POD_HOME, {
-						onState: (text) => (status = text),
-						onPeer: (text) => (peer = text),
-						onFs: (text) => (fsState = text)
-					});
+					if (!bridgeSession) throw new Error('Dragon86 session policy was not resolved');
+					bridge = new Dragon86Bridge(
+						POD_HOME,
+						{
+							onState: (text) => (status = text),
+							onPeer: (text) => (peer = text),
+							onFs: (text) => (fsState = text)
+						},
+						{ session: bridgeSession }
+					);
 					const remote = new Fs1RemoteFs(bridge.fsClient, root);
 					const source = dragon86ProjectSource({
 						id: 'dragon86',
@@ -78,6 +112,8 @@
 						},
 						onRemoteLive: () => bridge?.setFsLive(true),
 						onStatus: (text) => (fsState = text),
+						onIssues: (issues) => (syncIssues = issues),
+						onSyncController: (controller) => (syncController = controller),
 						onShutdown: () => bridge?.shutdown()
 					});
 					session = new IdeSession(source);
@@ -93,7 +129,9 @@
 						label: 'standalone-9p-workspace',
 						hydrateLabel: 'reading local 9p files',
 						remote,
-						onStatus: (text) => (fsState = text)
+						onStatus: (text) => (fsState = text),
+						onIssues: (issues) => (syncIssues = issues),
+						onSyncController: (controller) => (syncController = controller)
 					});
 					session = new IdeSession(source);
 				}
@@ -121,6 +159,9 @@
 			fs={fsState}
 			{initialPanel}
 			{initialAgent}
+			{bridgeSession}
+			{syncIssues}
+			onResolveSyncIssue={resolveSyncIssue}
 			onSwitchMode={switchMode}
 		/>
 	{:else if error}

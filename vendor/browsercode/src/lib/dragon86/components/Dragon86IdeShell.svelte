@@ -30,10 +30,12 @@
 	import { startDrag } from '$lib/utils/drag';
 	import { watchIsMobile } from '$lib/utils/viewport';
 	import type { PodBlocker } from '$lib/utils/platform';
+	import type { BridgeSessionConfig } from '../bridge/session';
+	import type { SyncIssue, SyncResolution } from '../fs/synced-workspace-fs';
 
 	type Mode = 'connected' | 'standalone';
 	type Activity = 'files' | 'search' | 'git' | 'agents';
-	type BottomTab = 'problems' | 'output' | 'debug' | 'terminal' | 'ports';
+	type BottomTab = 'problems' | 'output' | 'debug' | 'sync' | 'terminal' | 'ports';
 
 	type Props = {
 		session: IdeSession;
@@ -44,6 +46,9 @@
 		fs?: string;
 		initialPanel?: Activity;
 		initialAgent?: ToolId;
+		bridgeSession?: BridgeSessionConfig | null;
+		syncIssues?: SyncIssue[];
+		onResolveSyncIssue?: (id: string, strategy: SyncResolution) => Promise<void>;
 		onSwitchMode: (mode: Mode) => void;
 	};
 
@@ -56,6 +61,9 @@
 		fs = '',
 		initialPanel = 'files',
 		initialAgent = 'claude',
+		bridgeSession = null,
+		syncIssues = [],
+		onResolveSyncIssue = () => Promise.resolve(),
 		onSwitchMode
 	}: Props = $props();
 
@@ -70,6 +78,7 @@
 		{ id: 'problems', label: 'Problems', icon: 'mingcute:warning-line' },
 		{ id: 'output', label: 'Output', icon: 'mingcute:file-line' },
 		{ id: 'debug', label: 'Debug Console', icon: 'mingcute:bug-line' },
+		{ id: 'sync', label: 'Sync', icon: 'mingcute:refresh-line' },
 		{ id: 'terminal', label: 'Terminal', icon: 'mingcute:terminal-line' },
 		{ id: 'ports', label: 'Ports', icon: 'mingcute:server-line' }
 	];
@@ -103,6 +112,8 @@
 						: ''
 	);
 	let bottomTab = $state<BottomTab>('terminal');
+	let errorIssues = $derived(syncIssues.filter((issue) => issue.level === 'error'));
+	let resolving = $state<string | null>(null);
 
 	let blocker = $state<PodBlocker | null>(null);
 	let downloading = $state(false);
@@ -129,6 +140,16 @@
 
 	function switchMode(): void {
 		onSwitchMode(mode === 'connected' ? 'standalone' : 'connected');
+	}
+
+	async function resolveIssue(id: string, strategy: SyncResolution): Promise<void> {
+		if (resolving) return;
+		resolving = id;
+		try {
+			await onResolveSyncIssue(id, strategy);
+		} finally {
+			resolving = null;
+		}
 	}
 
 	function startFileDrag(event: MouseEvent): void {
@@ -227,7 +248,7 @@
 		</div>
 	</header>
 
-	{#if session.phase === 'failed'}
+	{#if session.phase === 'failed' || session.saveError || errorIssues.length > 0}
 		<div role="alert" class="df-failure">
 			<Icon
 				icon="mingcute:warning-line"
@@ -236,11 +257,21 @@
 				class="mt-px shrink-0 text-bc-coral"
 			/>
 			<div class="min-w-0 flex-1">
-				<p class="df-heading">Couldn't start the workspace</p>
-				<p class="df-mono">{session.failure}</p>
-				<p>See the Terminal/Output panel below. Reload to try again.</p>
+				<p class="df-heading">
+					{session.phase === 'failed'
+						? "Couldn't start the workspace"
+						: session.saveError
+							? 'A save did not reach Dragon86'
+							: 'Filesystem sync needs attention'}
+				</p>
+				<p class="df-mono">{session.failure ?? session.saveError ?? errorIssues[0]?.message}</p>
+				{#if errorIssues.length > 0}
+					<p>{errorIssues.length} sync issue(s). Open the Sync panel to resolve conflicts.</p>
+				{:else}
+					<p>See the Terminal/Output panel below. Reload to try again.</p>
+				{/if}
 			</div>
-			<button class="df-btn primary" onclick={() => location.reload()}>Reload</button>
+			<button class="df-btn primary" onclick={() => (bottomTab = 'sync')}>Sync panel</button>
 		</div>
 	{/if}
 
@@ -399,6 +430,9 @@
 						>
 							<Icon icon={tab.icon} width="11" height="11" />
 							{tab.label}
+							{#if tab.id === 'sync' && syncIssues.length > 0}
+								<span class="df-sync-badge">{syncIssues.length}</span>
+							{/if}
 						</button>
 					{/each}
 					<span class="df-panel-spacer"></span>
@@ -418,6 +452,48 @@
 						</div>
 					{:else if bottomTab === 'debug'}
 						<div class="df-panel-placeholder df-mono">Debug console is not attached.</div>
+					{:else if bottomTab === 'sync'}
+						<div class="df-sync-list df-mono">
+							{#if session.saveError}
+								<div class="df-sync-issue error">
+									<strong>Last save</strong>
+									<span>{session.saveError}</span>
+								</div>
+							{/if}
+							{#if syncIssues.length === 0}
+								<div class="df-sync-empty">
+									No sync conflicts or failed writes. Terminal-created files are pushed to Dragon86
+									on the next poll.
+								</div>
+							{:else}
+								{#each syncIssues as issue (issue.id)}
+									<div class="df-sync-issue" class:error={issue.level === 'error'}>
+										<strong>{issue.kind}{issue.path ? ` · ${issue.path}` : ''}</strong>
+										<span>{issue.message}</span>
+										{#if issue.kind === 'conflict'}
+											<div class="df-sync-actions">
+												<button
+													type="button"
+													class="df-btn"
+													disabled={resolving === issue.id}
+													onclick={() => void resolveIssue(issue.id, 'local')}
+												>
+													Use BrowserPod copy
+												</button>
+												<button
+													type="button"
+													class="df-btn"
+													disabled={resolving === issue.id}
+													onclick={() => void resolveIssue(issue.id, 'remote')}
+												>
+													Use Dragon86 copy
+												</button>
+											</div>
+										{/if}
+									</div>
+								{/each}
+							{/if}
+						</div>
 					{:else if bottomTab === 'ports'}
 						<div class="df-port-list df-mono">
 							{#if portal.portals.length === 0}
@@ -448,6 +524,18 @@
 			><Icon icon="mingcute:refresh-line" width="11" height="11" /> {statusFs}</span
 		>
 		<span class="df-status-item df-mono">{statusPeer}</span>
+		{#if bridgeSession}
+			<span class="df-status-item df-mono" title={bridgeSession.label}>
+				<Icon icon="mingcute:link-line" width="11" height="11" />
+				{bridgeSession.dedicated ? bridgeSession.channelName : bridgeSession.label}
+			</span>
+		{/if}
+		{#if syncIssues.length > 0}
+			<span class="df-status-item df-mono df-sync-status">
+				<Icon icon="mingcute:warning-line" width="11" height="11" />
+				{syncIssues.length} sync issue{syncIssues.length === 1 ? '' : 's'}
+			</span>
+		{/if}
 		<span class="df-status-spacer"></span>
 		<span class="df-status-item df-mono">{status || 'workspace'}</span>
 		<span class="df-status-item df-mono">{session.selectedFile || 'no file'}</span>
@@ -863,6 +951,62 @@
 		border: none;
 		background: rgba(0, 0, 0, 0.55);
 	}
+	.df-sync-badge {
+		display: inline-grid;
+		min-width: 16px;
+		height: 16px;
+		place-items: center;
+		border-radius: 999px;
+		background: var(--theme-primary);
+		color: #fff;
+		font-size: 9px;
+		box-shadow: 0 0 8px rgba(var(--theme-rgb), 0.5);
+	}
+	.df-sync-list {
+		position: absolute;
+		inset: 0;
+		overflow: auto;
+		padding: 10px 12px;
+		font-size: 11px;
+	}
+	.df-sync-empty {
+		color: var(--text-dim);
+	}
+	.df-sync-issue {
+		display: grid;
+		gap: 4px;
+		margin-bottom: 8px;
+		border: 1px solid var(--border-color-light);
+		border-radius: 6px;
+		background: var(--bg-card);
+		padding: 8px 10px;
+	}
+	.df-sync-issue.error {
+		border-color: rgba(255, 107, 107, 0.5);
+		background: rgba(255, 107, 107, 0.06);
+	}
+	.df-sync-issue strong {
+		font-family: var(--font-heading);
+		font-size: 10px;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--theme-bright);
+	}
+	.df-sync-issue span {
+		color: var(--text-secondary);
+	}
+	.df-sync-actions {
+		display: flex;
+		gap: 6px;
+		margin-top: 4px;
+	}
+	.df-sync-actions .df-btn {
+		padding: 4px 8px;
+		font-size: 0.6rem;
+	}
+	.df-sync-status {
+		color: #ffd479;
+	}
 	@media (max-width: 900px) {
 		.df-menu {
 			display: none;
@@ -892,7 +1036,7 @@
 		.df-body.is-mobile .df-divider-col {
 			display: none;
 		}
-		.df-status-item:nth-child(n + 4) {
+		.df-status-item:nth-child(n + 8) {
 			display: none;
 		}
 	}

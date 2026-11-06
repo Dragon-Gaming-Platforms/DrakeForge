@@ -55,10 +55,13 @@ Dragon86 → DrakeForge  { v:2, t:"fs-res", id, ok, error?, entries?, tree?, dat
 
 `ops` are `list | tree | read | write | mkdir | remove | rename | stat`. Paths are relative to Dragon86's share root. `read`/`write` are whole-file and capped at 16 MB; `tree` is capped at 5,000 entries.
 
-Two transports are always attached behind one `CompositeTransport`:
+`resolveBridgeSession` / `createBridgeTransport` select exactly one session policy:
 
-- `PostMessageTransport` for a hidden-iframe/embedded hoster. It accepts messages only from `window.parent`, and only from the same origin, `https://dragon-gaming-platforms.github.io`, localhost, or Arena preview origins. Replies go to the exact origin that said `hello`, never `*`.
-- `BroadcastChannelTransport` on `dragon86-hoster-v1` for separate-tab mode. Hoster-originated channel messages carry `via: "bc-hoster"` so a second hoster tab ignores them. BroadcastChannel is same-origin by construction.
+- **Embedded** (`?mode=embed`): only `PostMessageTransport`. It accepts messages only from `window.parent`, and only from the same origin, `https://dragon-gaming-platforms.github.io`, localhost, or Arena preview origins. Replies go to the exact origin that said `hello`, never `*`. No BroadcastChannel is constructed.
+- **Dedicated separate tab** (`?channel=dragon86-drakeforge-<uuid>`): only `BroadcastChannelTransport` on that assigned channel. It does not listen or broadcast on `dragon86-hoster-v1`, so CheerpX and other DrakeForge sessions stay isolated.
+- **Legacy separate tab** (no `channel`): `CompositeTransport` of `PostMessageTransport` and `BroadcastChannelTransport` on `dragon86-hoster-v1`, preserving Cheerpx-Bridge compatibility.
+
+Hoster-originated channel messages carry `via: "bc-hoster"` so a second hoster tab ignores them. BroadcastChannel is same-origin by construction. A malformed `channel` is rejected with a visible startup error, not silently downgraded.
 
 The `ready` capability `fs1` is advertised only after `remote.tree()` has answered successfully; `Dragon86Bridge.setFsLive(true)` calls `refreshReady()` to re-announce it if the terminal handshake finished earlier.
 
@@ -70,18 +73,20 @@ BrowserPod exposes only `openFile`, `createFile`, `createDirectory`, `run`, and 
 
 ## Sync algorithm
 
-State per remote-relative path: `{ isDir, size, mtime, hash? }`.
+State per path: remote stat/hash baseline, local content-hash baseline, pending failed writes, and active sync issues.
 
-- **Boot:** `remote.tree()` → `beginHydrate()` → write every file into PodFs → set the baseline → `start()`.
-- **Local write:** PodFs write → remote `write`/`mkdir`/`rename`/`remove` → mark `pendingLocal[path] = hash(bytes)` → update baseline from the returned stat.
-- **Poll (2 s):** `remote.tree()` → compare `(isDir,size,mtime)` to baseline.
-  - New/changed remote path and no matching pending-local hash: read remote bytes and write into PodFs.
-  - Remote deletion and no pending-local entry: delete from PodFs.
-  - Pending-local path whose remote content hash matches: clear pending and keep the baseline.
-  - Conflicting remote change: remote wins; pull it and drop the pending marker.
-- The UI's `projectFiles` and `projectDirs` are refreshed from the same snapshot through an optional `watchFiles` hook added to `ProjectSource`.
+- **Boot:** `remote.tree()` → hydrate into PodFs → `scanTree()` the pod workdir → hash both baselines. This lets terminal-created files be seen even though they bypass `WorkspaceFs` writes.
+- **Local IDE write:** PodFs write → remote `write`/`mkdir`/`rename`/`remove` → update both baselines. A failed remote write throws to the save handler, keeps the local copy, emits an error issue, and retries on the next poll.
+- **Poll (2 s):** fetch `remote.tree()` and `scanTree()`; compute remote and local three-way deltas.
+  - Remote-only change: pull into PodFs.
+  - Local-only change, including terminal-created/terminal-edited files: push to Dragon86.
+  - Both sides changed to identical content: converge without an operation.
+  - Both sides changed divergently: **do not overwrite**. Save a `*.drakeforge-remote-<timestamp>` copy locally and emit a conflict issue with explicit local/remote resolution in the Sync panel.
+  - Remote poll/read errors and failed writes are emitted as issues; they are never silently dropped.
+- `refreshBaselines()` re-snapshots both sides after successful reconciliation or conflict resolution.
+- The UI's `projectFiles` and `projectDirs` are refreshed from a merged remote/local snapshot through the optional `watchFiles` hook added to `ProjectSource`.
 
-The sync layer is deliberately conservative: it never deletes local files merely because a remote request failed, and it ignores paths outside the IDE workdir (for example BrowserPod's `.bp_rc`).
+The sync layer ignores paths outside the IDE workdir (for example BrowserPod's `.bp_rc`) and filters conflict artifacts from scans/snapshots. This is whole-file eventual consistency, not byte-range POSIX semantics.
 
 ## Standalone 9p worker
 
@@ -95,7 +100,7 @@ DrakeForge is now a **single workspace entry point**. `src/routes/+page.svelte` 
 
 The layout is modeled on VS Code and Dragon86's real `src/styles/theme.css` / `src/styles/os.css` (upstream `e30b868`). Exact Dragon Red hex codes, glow shadows, uppercase `Orbitron`-style headings, `Rajdhani`-style body text, scrollbar treatment, radial desktop gradients, and the `#e60012 → #4a0000` status-bar gradient come from that stylesheet. `src/lib/dragon86/theme.css` maps those tokens onto BrowserCode's `--color-bc-*` variables so Monaco, xterm, file tree, and portals all inherit the Dragon86 palette.
 
-The **Agents** activity view is inline: `AgentsPanel.svelte` constructs an `AgentSession` and renders `AgentShell` in the side bar. `src/lib/agents/session.svelte.ts` gained an optional `onRestart` hook so changing a credential relaunches only that inline CLI session instead of reloading the whole workspace tab. `GitPanel.svelte` runs real git commands in the Output terminal. The bottom panel has VS Code-style Problems/Output/Debug Console/Terminal/Ports tabs; the terminal stays mounted and spans the full workspace width. See `docs/link-to-dragon86.md` for the connection explanation.
+The **Agents** activity view is inline: `AgentsPanel.svelte` constructs an `AgentSession` and renders `AgentShell` in the side bar. `src/lib/agents/session.svelte.ts` gained an optional `onRestart` hook so changing a credential relaunches only that inline CLI session instead of reloading the whole workspace tab. `GitPanel.svelte` runs real git commands in the Output terminal. The bottom panel has VS Code-style Problems/Output/Debug Console/**Sync**/Terminal/Ports tabs; the Sync tab lists failed writes, poll errors, and conflicts with **Use BrowserPod copy** / **Use Dragon86 copy** buttons. The terminal stays mounted and spans the full workspace width. See `docs/link-to-dragon86.md` for the connection explanation.
 
 ## Implementation map
 
@@ -103,10 +108,10 @@ The **Agents** activity view is inline: `AgentsPanel.svelte` constructs an `Agen
 - `src/routes/+layout.svelte` and `src/lib/dragon86/theme.css` — global VS Code/Dragon86 chrome and exact Dragon Red tokens.
 - `src/lib/dragon86/components/Dragon86IdeShell.svelte` — title/menu bar, activity bar, side bar, editor group, preview group, bottom panel, and status bar.
 - `src/lib/dragon86/components/AgentsPanel.svelte` — inline agent CLI runner; `GitPanel.svelte` — Source Control actions.
-- `src/lib/dragon86/bridge/` — Cheerpx-Bridge-derived v1/v2 protocol, transports, hoster handshake, fs1 client, and the BrowserPod-backed `Dragon86Bridge`.
-- `src/lib/dragon86/fs/` — `RemoteFs` interface, fs1 and 9p implementations, `SyncedWorkspaceFs`, and the `ProjectSource` adapter.
+- `src/lib/dragon86/bridge/` — Cheerpx-Bridge-derived v1/v2 protocol, transports, session routing (`session.ts`), hoster handshake, fs1 client, and the BrowserPod-backed `Dragon86Bridge`.
+- `src/lib/dragon86/fs/` — `RemoteFs` interface, fs1 and 9p implementations, three-way `SyncedWorkspaceFs`, and the `ProjectSource` adapter.
 - `src/lib/dragon86/p9/` — copied Dragon86 9p handler, literal-frame client, Worker server, and Worker transport.
-- `tools/p9/test.ts` — Node loopback integration test for the bundled 9p wire format.
+- `tools/p9/test.ts`, `tools/bridge/test.ts`, `tools/sync/test.ts` — Node loopback 9p test, dedicated/embedded/reconnect/multi-session bridge tests, and terminal/conflict/failure sync-safety tests. `npm run test` runs all three.
 - `src/lib/ide/project-source.ts`, `runtime.ts`, `session.svelte.ts`, and `pod-runtime.ts` — small optional hooks for wrapping `WorkspaceFs`, watching remote trees, and attaching a hoster after BrowserPod boots.
 - Upstream `IdeShell.svelte` remains in the tree but is no longer the entry UI; old landing/agent routes redirect rather than opening a second workspace.
 

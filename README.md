@@ -6,6 +6,8 @@ DrakeForge is a GitHub Pages-hosted fork of [BrowserCode](https://github.com/lea
 | ---------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------- | ------------------------------- |
 | `/DrakeForge/`                                             | **Unified workspace, connected by default** | Dragon86 ZenFS `/home/user` over `fs1`                | **None**                        |
 | `/DrakeForge/dragon86`                                     | Connected alias                             | Same as root                                          | **None**                        |
+| `/DrakeForge/dragon86?channel=dragon86-drakeforge-<uuid>`  | **Agent-assigned dedicated session**        | Same `fs1`, isolated BroadcastChannel                 | **None**                        |
+| `/DrakeForge/?mode=embed`                                  | Embedded iframe                             | Same `fs1` over parent-frame `postMessage` only       | **None**                        |
 | `/DrakeForge/standalone` or `/DrakeForge/?mode=standalone` | **Standalone**                              | Bundled in-browser 9p2000.L server on ZenFS/IndexedDB | None; does not contact Dragon86 |
 
 The old BrowserCode landing, `/ide`, `/agents`, `/agents/[tool]` and `/embed` pages now redirect into this single workspace. The IDE runtime remains: Monaco editor, BrowserPod terminal, npm/dev-server previews, portals, CLI agents, Git commands, templates where reachable from the runtime, and the Java/CheerpJ runtime are not replaced.
@@ -29,7 +31,7 @@ Layout:
 - **Explorer side bar** with new-file, new-folder, download, search, Git, and inline agent views.
 - **Editor group** with Monaco tabs and a breadcrumb bar.
 - **Preview group** for BrowserPod portals.
-- VS Code-style **bottom panel** with Problems, Output, Debug Console, Terminal, and Ports tabs. The terminal spans the full workspace width and is resizable.
+- VS Code-style **bottom panel** with Problems, Output, Debug Console, **Sync**, Terminal, and Ports tabs. The Sync panel surfaces failed writes, remote poll errors, and concurrent-edit conflicts with explicit local/remote resolution. The terminal spans the full workspace width and is resizable.
 - Dragon Red **status bar** built from the same `linear-gradient(135deg,#e60012,#4a0000)` swatch Dragon86 uses for its Dragon Red theme.
 
 The Git activity view echoes real `git status`, `log`, `add`, `commit`, `pull`, and `push` commands into the Output terminal. The **Agents** activity view runs the selected CLI agent inline through `AgentShell` in the same browser tab — no `/agents/[tool]` page and no `target="_blank"` launcher. Only one agent CLI is active at a time; switching tools or changing a credential relaunches that inline session without reloading the workspace. Provider OAuth may still open a temporary sign-in tab.
@@ -40,22 +42,22 @@ The Git activity view echoes real `git status`, `log`, `add`, `commit`, `pull`, 
 
 Dragon86 already advertises `caps: ["fs1"]` and serves `/home/user` over:
 
-- hidden-iframe `postMessage`, and
-- separate-tab `BroadcastChannel` named `dragon86-hoster-v1`.
+- hidden-iframe **parent-frame `postMessage`** in embedded mode, and
+- separate-tab **`BroadcastChannel`** — `dragon86-hoster-v1` for legacy/CheerpX use, or `dragon86-drakeforge-<uuid>` when a Dragon86 agent assigns a dedicated session.
 
-DrakeForge implements the _hoster/client_ side of that Cheerpx-Bridge-compatible contract: `hello` → `ready`, terminal `data`/`resize`/`exit`, and whole-file `fs-req`/`fs-res`. This is **not raw 9p**; Dragon86's `p9.ts` is an in-page v86 virtio callback, not a network endpoint. The standalone mode bundles that 9p handler in a Web Worker instead and speaks literal 9p frames over `postMessage`.
+DrakeForge implements the _hoster/client_ side of that Cheerpx-Bridge-compatible contract: `hello` → `ready`, terminal `data`/`resize`/`exit`, and whole-file `fs-req`/`fs-res`. A dedicated `?channel=` session opens only its assigned BroadcastChannel; `?mode=embed` opens only postMessage; no `channel` keeps the default for backward compatibility. This is **not raw 9p**; Dragon86's `p9.ts` is an in-page v86 virtio callback, not a network endpoint. The standalone mode bundles that 9p handler in a Web Worker instead and speaks literal 9p frames over `postMessage`.
 
-BrowserPod has no public mount hook, so `SyncedWorkspaceFs` mirrors the remote tree into `/home/user/dragon86` inside BrowserPod and reconciles local saves with remote changes every 2 seconds. The `fs1` path is capped at 16 MB per file and 5,000 tree entries, matching Dragon86.
+BrowserPod has no public mount hook, so `SyncedWorkspaceFs` mirrors the remote tree into `/home/user/dragon86` inside BrowserPod and performs a three-way reconcile every 2 seconds. It scans the pod workdir so terminal-created files are pushed too; failed writes are surfaced and retried; concurrent divergent edits are preserved as a conflict with a remote copy, not silently overwritten. The `fs1` path is capped at 16 MB per file and 5,000 tree entries, matching Dragon86.
 
 ## Connected setup
 
 1. Deploy to GitHub Pages at `https://dragon-gaming-platforms.github.io/DrakeForge/`.
 2. In Dragon86, open **Settings → Engine**, choose **Separate tab**.
-3. Set the engine URL to `https://dragon-gaming-platforms.github.io/DrakeForge/dragon86` (the root `/DrakeForge/` also opens the connected workspace).
+3. If the Dragon86 agent supplies a session UUID, set the engine URL to `https://dragon-gaming-platforms.github.io/DrakeForge/dragon86?channel=dragon86-drakeforge-<uuid>`; otherwise use `https://dragon-gaming-platforms.github.io/DrakeForge/dragon86` or the root `/DrakeForge/`.
 4. Press **Reconnect** / **Open Engine Tab**.
 5. Dragon86 sends `hello`; DrakeForge answers `ready` once BrowserPod and its bridged bash shell are live. Dragon86's terminal then drives that shell while the workspace UI stays in the DrakeForge tab.
 
-Default remote root: `/Dragon86-IDE` inside `/home/user`. Override with `?root=/Documents` or `?root=/`. Use `?mode=embed` and `integrations/dragon86/BrowserCode-IDE.d86` to embed the workspace inside a Dragon86 window; Dragon86's top page supplies cross-origin isolation.
+Default remote root: `/Dragon86-IDE` inside `/home/user`. Override with `?root=/Documents` or `?root=/`. Use `?mode=embed` and `integrations/dragon86/BrowserCode-IDE.d86` to embed the workspace inside a Dragon86 window; Dragon86's top page supplies cross-origin isolation. Embedded mode intentionally disables BroadcastChannel.
 
 Both Pages sites share `https://dragon-gaming-platforms.github.io`, which is why the BroadcastChannel works. A custom domain would break tab mode.
 
@@ -78,7 +80,7 @@ cp .env.example .env       # optional local BrowserPod key
 npm run dev                # http://localhost:5173/DrakeForge/
 npm run check
 npm run lint
-npm run test:p9            # real 9p client/server loopback test
+npm run test               # 9p loopback + dedicated/embedded bridge + sync-safety tests
 NODE_OPTIONS=--max-old-space-size=4096 PAGES_BASE=/DrakeForge PAGES_FALLBACK=404.html npm run build
 ```
 
@@ -86,7 +88,7 @@ The Monaco/TypeScript workers push Vite's production build past Node's default 2
 
 ## Deployment
 
-`.github/workflows/deploy.yml` builds and validates on PRs to `main`, then deploys `vendor/browsercode/dist` after a `main` push or manual dispatch with `actions/deploy-pages`. Set Pages → Build and deployment → Source: **GitHub Actions** once; the workflow's `configure-pages` step also attempts this.
+`.github/workflows/deploy.yml` runs `check`, `lint`, and the full `npm run test` suite on PRs to `main`, then deploys `vendor/browsercode/dist` after a `main` push or manual dispatch with `actions/deploy-pages`. Set Pages → Build and deployment → Source: **GitHub Actions** once; the workflow's `configure-pages` step also attempts this.
 
 ## Provenance and licenses
 

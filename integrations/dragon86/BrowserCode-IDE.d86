@@ -11,6 +11,8 @@
   Copy this file into Dragon86's ~/system/apps/ (or open it from Files) to launch the
   unified DrakeForge workspace in a Dragon86 window. The root URL is same-origin with
   Dragon86's Pages site, which is what allows postMessage and the fs1 bridge to work.
+  `?mode=embed` uses only parent-frame postMessage and intentionally disables
+  BroadcastChannel, so it cannot collide with separate-tab engine sessions.
   `cross-origin-isolated` is delegated because BrowserPod needs SharedArrayBuffer;
   Dragon86's own coi-serviceworker isolates the top page.
 -->

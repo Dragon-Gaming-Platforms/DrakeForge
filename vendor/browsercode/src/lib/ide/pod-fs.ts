@@ -9,13 +9,16 @@ import {
 	writePodBinaryFile,
 	writePodFile
 } from '$lib/pod/fs';
-import type { WorkspaceFs } from './workspace-fs';
+import type { LocalScanEntry, WorkspaceFs } from './workspace-fs';
 
 export class PodFs implements WorkspaceFs {
 	/** Lazily created hidden terminal that carries the shell-backed operations. */
 	private fsTerminal: Terminal | null = null;
 	/** Serializes shell commands so two never share the hidden terminal at once. */
 	private fsQueue: Promise<unknown> = Promise.resolve();
+	/** Separate hidden terminal whose output is captured for tree scans. */
+	private scanTerminal: Terminal | null = null;
+	private scanCollector: ((bytes: Uint8Array) => void) | null = null;
 
 	constructor(private readonly pod: BrowserPod) {}
 
@@ -53,6 +56,66 @@ export class PodFs implements WorkspaceFs {
 
 	deleteEntry(path: string): Promise<void> {
 		return this.runFsCommand(`rm -rf -- ${shQuote(path)}`, `Failed to delete ${path}`);
+	}
+
+	/**
+	 * Project-relative scan of the pod's workdir. BrowserPod terminal commands
+	 * can create files that never pass through the IDE's WorkspaceFs methods;
+	 * this sees them so the Dragon86 sync layer can push them or report a
+	 * conflict instead of discarding them.
+	 */
+	async scanTree(root: string): Promise<LocalScanEntry[]> {
+		const marker = '__DRAKEFORGE_SCAN__';
+		const command =
+			`printf '${marker}\\0'; ` +
+			`find ${shQuote(root)} -mindepth 1 \\( -name node_modules -o -name .git -o -name .cache \\) -prune -o -printf '%y\\0%P\\0'`;
+		const output = await this.runCaptureCommand(command, `Failed to scan ${root}`);
+		const parts = output.split('\0');
+		const markerIndex = parts.indexOf(marker);
+		if (markerIndex === -1) throw new Error('Pod filesystem scan returned no marker');
+		const entries: LocalScanEntry[] = [];
+		for (let i = markerIndex + 1; i + 1 < parts.length; i += 2) {
+			const type = parts[i];
+			const path = parts[i + 1];
+			if (!type || !path) continue;
+			if (entries.length >= 5000) throw new Error('Pod filesystem scan exceeded 5000 entries');
+			entries.push({ path, isDir: type === 'd', size: 0, mtime: 0 });
+		}
+		return entries;
+	}
+
+	/** Runs a shell command and captures its raw output from a dedicated hidden terminal. */
+	private runCaptureCommand(command: string, failure: string): Promise<string> {
+		const task = async (): Promise<string> => {
+			if (!this.scanTerminal) {
+				this.scanTerminal = await this.pod.createCustomTerminal({
+					onOutput: (chunk) => this.scanCollector?.(new Uint8Array(chunk))
+				});
+			}
+			const chunks: Uint8Array[] = [];
+			this.scanCollector = (bytes) => chunks.push(bytes);
+			try {
+				const exitCode = (await this.pod.run('bash', ['-c', command], {
+					echo: false,
+					terminal: this.scanTerminal,
+					cwd: POD_HOME
+				})) as unknown as number;
+				if (exitCode !== 0) throw new Error(`${failure} (exit code ${exitCode})`);
+				const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+				const bytes = new Uint8Array(total);
+				let offset = 0;
+				for (const chunk of chunks) {
+					bytes.set(chunk, offset);
+					offset += chunk.byteLength;
+				}
+				return new TextDecoder().decode(bytes);
+			} finally {
+				this.scanCollector = null;
+			}
+		};
+		const result = this.fsQueue.then(task, task);
+		this.fsQueue = result.catch(() => undefined);
+		return result;
 	}
 
 	/**
