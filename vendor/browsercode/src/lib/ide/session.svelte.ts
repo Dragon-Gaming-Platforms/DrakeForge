@@ -62,6 +62,8 @@ export class IdeSession {
 	phase = $state<'idle' | 'launching' | 'ready' | 'building' | 'failed'>('idle');
 	/** Why the boot failed; set with `phase = 'failed'`. */
 	failure = $state<string | null>(null);
+	/** Last failed remote/WorkspaceFs write, surfaced by the sync layer. */
+	saveError = $state<string | null>(null);
 
 	/** Paths with a save in flight; a second save of the same file waits for the next edit. */
 	private savingPaths = new SvelteSet<string>();
@@ -388,8 +390,10 @@ export class IdeSession {
 		try {
 			await this.fs.writeFile(this.abs(entry.path), content);
 			entry.savedContent = content;
+			this.saveError = null;
 		} catch (error) {
 			console.error('Failed to save file:', error);
+			this.saveError = error instanceof Error ? error.message : String(error);
 		} finally {
 			this.savingPaths.delete(entry.path);
 			this.isSaving = this.savingPaths.size > 0;

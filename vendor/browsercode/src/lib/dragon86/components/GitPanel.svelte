@@ -29,38 +29,43 @@
 	}
 </script>
 
-<div class="flex h-full flex-col gap-3 overflow-y-auto p-3 text-[12px]">
-	<div class="df-panel-card">
-		<div class="df-panel-label">Repository</div>
-		<div class="truncate font-mono text-[11px] text-bc-text">{repoLabel}</div>
-		<div class="mt-2 flex items-center gap-1.5 text-bc-mist">
+<div class="df-git-view">
+	<div class="df-card df-git-card">
+		<div class="df-heading df-git-label">Repository</div>
+		<div class="df-mono df-git-repo">{repoLabel}</div>
+		<div class="df-git-branch">
 			<Icon icon="mingcute:git-branch-line" width="13" height="13" />
-			<span class="font-mono">{branch}</span>
+			<span class="df-mono">{branch}</span>
 		</div>
 	</div>
 
-	<div class="df-panel-card">
-		<div class="df-panel-label">Unsaved buffers</div>
+	<div class="df-card df-git-card">
+		<div class="df-heading df-git-label">Unsaved buffers</div>
 		{#if dirtyFiles.length === 0}
-			<div class="text-bc-text-muted">No unsaved editor tabs.</div>
+			<div class="df-git-empty">No unsaved editor tabs.</div>
 		{:else}
-			<ul class="mt-1 space-y-1">
+			<ul class="df-git-list">
 				{#each dirtyFiles as file (file)}
-					<li class="flex items-center gap-1.5 font-mono text-[11px] text-bc-gold">
+					<li class="df-mono">
 						<Icon icon="mingcute:edit-line" width="11" height="11" />
-						<span class="truncate">{file}</span>
+						<span>{file}</span>
 					</li>
 				{/each}
 			</ul>
 		{/if}
 	</div>
 
-	<label class="df-panel-card flex flex-col gap-1.5">
-		<span class="df-panel-label">Commit message</span>
-		<input bind:value={message} type="text" placeholder="Update from DrakeForge" class="df-input" />
+	<label class="df-card df-git-card df-git-message">
+		<span class="df-heading df-git-label">Commit message</span>
+		<input
+			bind:value={message}
+			type="text"
+			placeholder="Update from DrakeForge"
+			class="df-input df-mono"
+		/>
 	</label>
 
-	<div class="grid grid-cols-2 gap-1.5">
+	<div class="df-git-actions">
 		<button class="df-btn" disabled={busy || !session.fsReady} onclick={() => run(['status'])}>
 			<Icon icon="mingcute:information-line" width="12" height="12" /> Status
 		</button>
@@ -72,7 +77,7 @@
 			<Icon icon="mingcute:history-line" width="12" height="12" /> Log
 		</button>
 		<button class="df-btn" disabled={busy || !session.fsReady} onclick={() => run(['add', '.'])}>
-			<Icon icon="mingcute:add-line" width="12" height="12" /> Stage all
+			<Icon icon="mingcute:add-line" width="12" height="12" /> Stage
 		</button>
 		<button class="df-btn" disabled={busy || !session.fsReady} onclick={commit}>
 			<Icon icon="mingcute:git-commit-line" width="12" height="12" /> Commit
@@ -89,65 +94,91 @@
 		</button>
 	</div>
 
-	<p class="text-[11px] leading-relaxed text-bc-text-muted">
-		Commands are echoed and run in the Output terminal at the bottom. The Dragon86/9p sync layer
-		mirrors files; git still runs inside BrowserPod's shell.
+	<p class="df-git-note">
+		Commands echo into the Output terminal at the bottom. Git runs inside BrowserPod; the
+		Dragon86/9p sync layer mirrors files into that shell.
 	</p>
 </div>
 
 <style>
-	.df-panel-card {
-		border: 1px solid var(--color-bc-border);
-		border-radius: 8px;
-		background: var(--color-bc-surface);
+	.df-git-view {
+		display: flex;
+		height: 100%;
+		flex-direction: column;
+		gap: 8px;
+		overflow-y: auto;
+		padding: 8px;
+		font-family: var(--font-body);
+	}
+	.df-git-card {
+		border-color: var(--border-color-light);
 		padding: 8px 10px;
 	}
-	.df-panel-label {
-		margin-bottom: 4px;
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		color: var(--color-bc-text-muted);
+	.df-git-label {
+		margin-bottom: 5px;
+		font-size: 9px;
+		color: var(--text-dim);
 	}
-	.df-input {
-		width: 100%;
-		border: 1px solid var(--color-bc-border);
-		border-radius: 6px;
-		background: var(--color-bc-abyss);
-		color: var(--color-bc-text);
-		padding: 6px 8px;
-		font:
-			11px ui-monospace,
-			monospace;
-		outline: none;
-	}
-	.df-input:focus {
-		border-color: var(--color-bc-azure);
-		box-shadow: 0 0 10px rgba(var(--dragon86-rgb), 0.25);
-	}
-	.df-btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 5px;
-		border: 1px solid var(--color-bc-border);
-		border-radius: 7px;
-		background: var(--color-bc-surface);
-		color: var(--color-bc-text);
-		padding: 6px 8px;
+	.df-git-repo {
+		overflow: hidden;
 		font-size: 11px;
-		font-family: inherit;
-		cursor: pointer;
-		transition: 0.15s ease;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--text-primary);
 	}
-	.df-btn:hover:not(:disabled) {
-		border-color: var(--color-bc-azure);
-		color: var(--color-bc-azure);
-		box-shadow: 0 0 12px rgba(var(--dragon86-rgb), 0.18);
+	.df-git-branch {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 8px;
+		font-size: 11px;
+		color: var(--text-secondary);
 	}
-	.df-btn:disabled {
-		opacity: 0.45;
-		cursor: not-allowed;
+	.df-git-empty {
+		font-size: 11px;
+		color: var(--text-dim);
+	}
+	.df-git-list {
+		display: grid;
+		gap: 4px;
+		margin: 4px 0 0;
+		padding: 0;
+		list-style: none;
+	}
+	.df-git-list li {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 10px;
+		color: var(--theme-gold, #ffd479);
+	}
+	.df-git-list li span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.df-git-message {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+	}
+	.df-git-message .df-input {
+		width: 100%;
+		font-size: 11px;
+	}
+	.df-git-actions {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 5px;
+	}
+	.df-git-actions .df-btn {
+		padding: 6px 7px;
+		font-size: 0.62rem;
+	}
+	.df-git-note {
+		margin: 0;
+		font-size: 10px;
+		line-height: 1.45;
+		color: var(--text-dim);
 	}
 </style>

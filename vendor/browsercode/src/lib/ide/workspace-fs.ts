@@ -1,4 +1,16 @@
 /**
+ * A lightweight directory scan. Used by remote sync layers to notice files
+ * created or changed by a shell outside the IDE's WorkspaceFs writes.
+ */
+export interface LocalScanEntry {
+	/** Project-relative path, never beginning with `/`. */
+	path: string;
+	isDir: boolean;
+	size: number;
+	mtime: number;
+}
+
+/**
  * The filesystem a runtime keeps the project in. Paths are absolute inside that runtime; the
  * session resolves project-relative paths against its workdir before calling in. Every method
  * rejects with an `Error` the UI can show as is.
@@ -22,4 +34,10 @@ export interface WorkspaceFs {
 	renameEntry(from: string, to: string): Promise<void>;
 	/** Recursive for directories. */
 	deleteEntry(path: string): Promise<void>;
+	/**
+	 * Optional whole-tree scan. Runtimes that support it let the Dragon86 sync
+	 * layer reconcile terminal-created or terminal-edited files instead of
+	 * silently overwriting them on the next remote poll.
+	 */
+	scanTree?(root: string): Promise<LocalScanEntry[]>;
 }

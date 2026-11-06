@@ -15,7 +15,7 @@ import type {
 } from '$lib/ide/project-source';
 import type { WorkspaceFs } from '$lib/ide/workspace-fs';
 import { DRAGON86_WORKDIR } from '../bridge/config';
-import { SyncedWorkspaceFs } from './synced-workspace-fs';
+import { SyncedWorkspaceFs, type SyncController, type SyncIssue } from './synced-workspace-fs';
 import { cleanRelativePath, snapshotOf, type RemoteEntry, type RemoteFs } from './remote-fs';
 
 export interface Dragon86SourceOptions {
@@ -26,6 +26,8 @@ export interface Dragon86SourceOptions {
 	podAttachment?: PodAttachment;
 	onRemoteLive?: () => void;
 	onStatus?: (text: string, level?: 'info' | 'warn' | 'error') => void;
+	onIssues?: (issues: SyncIssue[]) => void;
+	onSyncController?: (controller: SyncController | null) => void;
 	onShutdown?: () => void;
 }
 
@@ -82,6 +84,12 @@ export function dragon86ProjectSource(options: Dragon86SourceOptions): ProjectSo
 
 		prepare: async (): Promise<void> => {
 			synced?.setInitialBaseline(initialEntries);
+			try {
+				await synced?.initialize();
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				status(`Could not snapshot the workspace for sync: ${message}`, 'error');
+			}
 			synced?.start();
 		},
 
@@ -116,8 +124,10 @@ export function dragon86ProjectSource(options: Dragon86SourceOptions): ProjectSo
 
 		wrapFs: (podFs: WorkspaceFs): WorkspaceFs => {
 			synced = new SyncedWorkspaceFs(podFs, remote, DRAGON86_WORKDIR, {
-				onStatus: (text, level) => status(text, level ?? 'info')
+				onStatus: (text, level) => status(text, level ?? 'info'),
+				onIssues: (issues) => options.onIssues?.(issues)
 			});
+			options.onSyncController?.(synced);
 			return synced;
 		},
 
@@ -132,6 +142,7 @@ export function dragon86ProjectSource(options: Dragon86SourceOptions): ProjectSo
 		shutdown: () => {
 			synced?.stop();
 			remote.close();
+			options.onSyncController?.(null);
 			options.onShutdown?.();
 		}
 	};

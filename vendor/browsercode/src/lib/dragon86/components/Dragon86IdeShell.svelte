@@ -1,14 +1,13 @@
 <script lang="ts">
 	/**
-	 * VS Code-style shell for the DrakeForge connected and standalone IDE routes.
+	 * VS Code-shaped workspace shell, using Dragon86's real design tokens.
 	 *
-	 * It reuses BrowserCode's real EditorPane, FileTreePanel, SearchPanel,
-	 * TerminalTabs, Portal preview and IdeSession boot pipeline. Only the chrome
-	 * is new: a Dragon Red activity bar with Files / Search / Git / Agents views,
-	 * editor + preview side by side, a full-width terminal panel at the bottom,
-	 * and a status bar. The upstream IdeShell remains untouched for /ide and /embed.
+	 * Layout: title/menu bar, activity bar, side bar, editor group, preview group,
+	 * bottom panel with VS Code-style tabs, and a Dragon Red status bar. Every
+	 * view is inline: files, search, source control, agents, terminal and preview
+	 * all live in one browser tab per workspace.
 	 */
-	import { onDestroy, onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import Icon from '@iconify/svelte';
 	import Portal from '$lib/components/Portal.svelte';
@@ -23,6 +22,7 @@
 	import GitPanel from './GitPanel.svelte';
 	import AgentsPanel from './AgentsPanel.svelte';
 	import type { IdeSession } from '$lib/ide/session.svelte';
+	import type { ToolId } from '$lib/config/tools';
 	import { downloadProject } from '$lib/ide/download';
 	import { PortalState } from '$lib/stores/portals.svelte';
 	import { installLeaveGuard } from '$lib/stores/leaveWarning.svelte';
@@ -30,15 +30,58 @@
 	import { startDrag } from '$lib/utils/drag';
 	import { watchIsMobile } from '$lib/utils/viewport';
 	import type { PodBlocker } from '$lib/utils/platform';
+	import type { BridgeSessionConfig } from '../bridge/session';
+	import type { SyncIssue, SyncResolution } from '../fs/synced-workspace-fs';
+
+	type Mode = 'connected' | 'standalone';
+	type Activity = 'files' | 'search' | 'git' | 'agents';
+	type BottomTab = 'problems' | 'output' | 'debug' | 'sync' | 'terminal' | 'ports';
 
 	type Props = {
 		session: IdeSession;
-		mode: 'connected' | 'standalone';
+		mode: Mode;
 		title?: string;
+		status?: string;
+		peer?: string;
+		fs?: string;
+		initialPanel?: Activity;
+		initialAgent?: ToolId;
+		bridgeSession?: BridgeSessionConfig | null;
+		syncIssues?: SyncIssue[];
+		onResolveSyncIssue?: (id: string, strategy: SyncResolution) => Promise<void>;
+		onSwitchMode: (mode: Mode) => void;
 	};
-	let { session, mode, title = 'DrakeForge' }: Props = $props();
 
-	type Activity = 'files' | 'search' | 'git' | 'agents';
+	let {
+		session,
+		mode,
+		title = 'DrakeForge',
+		status = '',
+		peer = '',
+		fs = '',
+		initialPanel = 'files',
+		initialAgent = 'claude',
+		bridgeSession = null,
+		syncIssues = [],
+		onResolveSyncIssue = () => Promise.resolve(),
+		onSwitchMode
+	}: Props = $props();
+
+	const menuItems = ['File', 'Edit', 'Selection', 'View', 'Go', 'Run', 'Terminal', 'Help'];
+	const railItems: { id: Activity; icon: string; label: string }[] = [
+		{ id: 'files', icon: 'mingcute:file-line', label: 'Explorer' },
+		{ id: 'search', icon: 'mingcute:search-line', label: 'Search' },
+		{ id: 'git', icon: 'mingcute:git-branch-line', label: 'Source Control' },
+		{ id: 'agents', icon: 'mingcute:ai-line', label: 'Agents' }
+	];
+	const bottomTabs: { id: BottomTab; label: string; icon: string }[] = [
+		{ id: 'problems', label: 'Problems', icon: 'mingcute:warning-line' },
+		{ id: 'output', label: 'Output', icon: 'mingcute:file-line' },
+		{ id: 'debug', label: 'Debug Console', icon: 'mingcute:bug-line' },
+		{ id: 'sync', label: 'Sync', icon: 'mingcute:refresh-line' },
+		{ id: 'terminal', label: 'Terminal', icon: 'mingcute:terminal-line' },
+		{ id: 'ports', label: 'Ports', icon: 'mingcute:server-line' }
+	];
 
 	const portal = new PortalState({ preferredPort: () => session.source.appPort });
 	let bootLines = $derived(session.runtime.stages);
@@ -52,12 +95,11 @@
 	let modeLabel = $derived(mode === 'connected' ? 'Dragon86 · fs1' : 'Standalone · 9p2000.L');
 	let modeIcon = $derived(mode === 'connected' ? 'mingcute:link-line' : 'mingcute:hard-drive-line');
 	let statusBranch = $derived(session.source.repo?.ref ?? 'main');
-	let statusFs = $derived(session.fsReady ? 'fs ready' : 'booting');
 	let statusPort = $derived(portal.selectedPort === null ? 'no port' : `:${portal.selectedPort}`);
+	let statusFs = $derived(fs || (session.fsReady ? 'fs ready' : 'booting'));
+	let statusPeer = $derived(peer || 'workspace');
 
-	let blocker = $state<PodBlocker | null>(null);
-	let downloading = $state(false);
-	let activePanel = $state<Activity | null>('files');
+	let activePanel = $state<Activity | null>(untrack(() => initialPanel));
 	let panelTitle = $derived(
 		activePanel === 'files'
 			? 'Explorer'
@@ -69,10 +111,16 @@
 						? 'Agents'
 						: ''
 	);
+	let bottomTab = $state<BottomTab>('terminal');
+	let errorIssues = $derived(syncIssues.filter((issue) => issue.level === 'error'));
+	let resolving = $state<string | null>(null);
+
+	let blocker = $state<PodBlocker | null>(null);
+	let downloading = $state(false);
 	let fileTree = $state<{ startCreate: (kind: 'file' | 'folder') => void } | null>(null);
 	let isMobile = $state(false);
-	let filePanelWidth = $state(240);
-	let terminalHeight = $state(230);
+	let filePanelWidth = $state(260);
+	let terminalHeight = $state(240);
 	let dragging = $state<'file' | 'terminal' | null>(null);
 	let outputEl = $state<HTMLElement | null>(null);
 
@@ -82,8 +130,26 @@
 		window.dispatchEvent(new Event('resize'));
 	}
 
+	$effect(() => {
+		if (bottomTab === 'terminal') setTimeout(() => fitTerminals(), 0);
+	});
+
 	function togglePanel(panel: Activity): void {
 		activePanel = activePanel === panel ? null : panel;
+	}
+
+	function switchMode(): void {
+		onSwitchMode(mode === 'connected' ? 'standalone' : 'connected');
+	}
+
+	async function resolveIssue(id: string, strategy: SyncResolution): Promise<void> {
+		if (resolving) return;
+		resolving = id;
+		try {
+			await onResolveSyncIssue(id, strategy);
+		} finally {
+			resolving = null;
+		}
 	}
 
 	function startFileDrag(event: MouseEvent): void {
@@ -156,33 +222,33 @@
 	});
 </script>
 
-<div class="df-shell dragon86-theme" data-mode={mode}>
+<div class="df-shell df-radial-bg" data-mode={mode}>
 	{#if blocker}
 		<PodBlockerOverlay {blocker} />
 	{/if}
 
-	<!-- ── Title bar ─────────────────────────────────────────────────────── -->
-	<header class="df-header">
+	<header class="df-titlebar">
 		<div class="df-brand">
 			<span class="df-logo df-glow"><Icon icon="mingcute:fire-line" width="16" height="16" /></span>
-			<span class="df-title df-glow">{title}</span>
+			<span class="df-heading df-glow df-title">{title}</span>
 		</div>
-		<span class="df-header-sep"></span>
-		<div class="df-breadcrumb">
-			<span class="truncate text-bc-text">{session.source.label}</span>
-			{#if session.selectedFile}
-				<span class="text-bc-icon">/</span>
-				<span class="truncate text-bc-text">{session.selectedFile}</span>
-			{/if}
-			{#if session.isSaving}<span class="ml-1 shrink-0 text-bc-text-muted">saving…</span>{/if}
-		</div>
-		<div class="df-header-mode">
-			<Icon icon={modeIcon} width="12" height="12" />
-			<span>{modeLabel}</span>
+		<nav class="df-menu" aria-label="Menu bar">
+			{#each menuItems as item (item)}
+				<span class="df-menu-item df-heading">{item}</span>
+			{/each}
+		</nav>
+		<div class="df-title-actions">
+			<span class="df-mode-chip df-heading">
+				<Icon icon={modeIcon} width="11" height="11" />
+				{modeLabel}
+			</span>
+			<button type="button" class="df-btn df-mode-switch" onclick={switchMode}>
+				{mode === 'connected' ? 'Standalone' : 'Connect'}
+			</button>
 		</div>
 	</header>
 
-	{#if session.phase === 'failed'}
+	{#if session.phase === 'failed' || session.saveError || errorIssues.length > 0}
 		<div role="alert" class="df-failure">
 			<Icon
 				icon="mingcute:warning-line"
@@ -191,15 +257,24 @@
 				class="mt-px shrink-0 text-bc-coral"
 			/>
 			<div class="min-w-0 flex-1">
-				<p class="font-medium text-bc-text">Couldn't start the project</p>
-				<p class="mt-0.5 break-words text-bc-text-muted">{session.failure}</p>
-				<p class="mt-0.5 text-bc-text-muted">See the Output terminal below. Reload to try again.</p>
+				<p class="df-heading">
+					{session.phase === 'failed'
+						? "Couldn't start the workspace"
+						: session.saveError
+							? 'A save did not reach Dragon86'
+							: 'Filesystem sync needs attention'}
+				</p>
+				<p class="df-mono">{session.failure ?? session.saveError ?? errorIssues[0]?.message}</p>
+				{#if errorIssues.length > 0}
+					<p>{errorIssues.length} sync issue(s). Open the Sync panel to resolve conflicts.</p>
+				{:else}
+					<p>See the Terminal/Output panel below. Reload to try again.</p>
+				{/if}
 			</div>
-			<button onclick={() => location.reload()} class="df-reload">Reload</button>
+			<button class="df-btn primary" onclick={() => (bottomTab = 'sync')}>Sync panel</button>
 		</div>
 	{/if}
 
-	<!-- ── Body ─────────────────────────────────────────────────────────── -->
 	<div class="df-body" class:is-mobile={isMobile}>
 		{#if isMobile && activePanel}
 			<button
@@ -210,61 +285,33 @@
 			></button>
 		{/if}
 
-		<aside class="df-rail" aria-label="Activity bar">
-			<div class="df-rail-top">
-				<button
-					type="button"
-					class="df-rail-btn"
-					class:df-active={activePanel === 'files'}
-					title="Files"
-					aria-label="Files"
-					onclick={() => togglePanel('files')}
-				>
-					<Icon icon="mingcute:file-line" width="19" height="19" />
-				</button>
-				<button
-					type="button"
-					class="df-rail-btn"
-					class:df-active={activePanel === 'search'}
-					title="Search"
-					aria-label="Search"
-					onclick={() => togglePanel('search')}
-				>
-					<Icon icon="mingcute:search-line" width="19" height="19" />
-				</button>
-				<button
-					type="button"
-					class="df-rail-btn"
-					class:df-active={activePanel === 'git'}
-					title="Source Control"
-					aria-label="Source Control"
-					onclick={() => togglePanel('git')}
-				>
-					<Icon icon="mingcute:git-branch-line" width="19" height="19" />
-				</button>
-				<button
-					type="button"
-					class="df-rail-btn"
-					class:df-active={activePanel === 'agents'}
-					title="Agents"
-					aria-label="Agents"
-					onclick={() => togglePanel('agents')}
-				>
-					<Icon icon="mingcute:ai-line" width="19" height="19" />
-				</button>
+		<aside class="df-activity" aria-label="Activity bar">
+			<div class="df-activity-top">
+				{#each railItems as item (item.id)}
+					<button
+						type="button"
+						class="df-rail-btn"
+						class:df-active={activePanel === item.id}
+						title={item.label}
+						aria-label={item.label}
+						onclick={() => togglePanel(item.id)}
+					>
+						<Icon icon={item.icon} width="20" height="20" />
+					</button>
+				{/each}
 			</div>
-			<div class="df-rail-bottom">
+			<div class="df-activity-bottom">
 				<SettingsMenu baseClass="df-rail-btn" activeClass="df-active" idleClass="" size={18} />
 				<ZenToggle baseClass="df-rail-btn" activeClass="df-active" idleClass="" size={18} />
 			</div>
 		</aside>
 
 		{#if activePanel}
-			<div class="df-side" style="width: {isMobile ? 260 : filePanelWidth}px;">
-				<div class="df-side-header">
-					<span>{panelTitle}</span>
+			<div class="df-sidebar" style="width: {isMobile ? 280 : filePanelWidth}px;">
+				<div class="df-sidebar-header">
+					<span class="df-heading">{panelTitle}</span>
 					{#if activePanel === 'files'}
-						<div class="flex items-center gap-0.5">
+						<div class="df-sidebar-actions">
 							<button
 								type="button"
 								title="New file"
@@ -272,7 +319,7 @@
 								onclick={() => fileTree?.startCreate('file')}
 								class="df-icon-btn"
 							>
-								<Icon icon="mingcute:file-new-line" width="13" height="13" />
+								<Icon icon="mingcute:file-new-line" width="14" height="14" />
 							</button>
 							<button
 								type="button"
@@ -281,11 +328,11 @@
 								onclick={() => fileTree?.startCreate('folder')}
 								class="df-icon-btn"
 							>
-								<Icon icon="mingcute:new-folder-line" width="13" height="13" />
+								<Icon icon="mingcute:new-folder-line" width="14" height="14" />
 							</button>
 							<button
 								type="button"
-								title={downloading ? 'Zipping project…' : 'Download project as a zip'}
+								title={downloading ? 'Zipping project…' : 'Download workspace'}
 								disabled={!session.fsReady || downloading}
 								onclick={handleDownload}
 								class="df-icon-btn"
@@ -293,14 +340,14 @@
 								<Icon
 									icon={downloading ? 'mingcute:loading-line' : 'mingcute:download-line'}
 									class={downloading ? 'animate-spin' : ''}
-									width="13"
-									height="13"
+									width="14"
+									height="14"
 								/>
 							</button>
 						</div>
 					{/if}
 				</div>
-				<div class="df-side-body">
+				<div class="df-sidebar-body">
 					{#if activePanel === 'files'}
 						<FileTreePanel
 							bind:this={fileTree}
@@ -312,7 +359,7 @@
 					{:else if activePanel === 'git'}
 						<GitPanel {session} />
 					{:else if activePanel === 'agents'}
-						<AgentsPanel />
+						<AgentsPanel initialTool={initialAgent} />
 					{/if}
 				</div>
 			</div>
@@ -321,7 +368,7 @@
 				class="df-divider df-divider-col"
 				class:active={dragging === 'file'}
 				onmousedown={startFileDrag}
-				aria-label="Resize side panel"
+				aria-label="Resize side bar"
 			>
 				<div class="df-divider-line"></div>
 			</button>
@@ -329,22 +376,37 @@
 
 		<div class="df-main">
 			<div class="df-top" class:dragging={dragging !== null}>
-				<div class="df-editor"><EditorPane {session} /></div>
-				<div class="df-preview" class:pointer-events-none={dragging !== null}>
-					{#if portal.portals.length > 0}
-						<Portal {portal} onBeforeReload={() => session.saveAll()} showPort={true} />
-					{/if}
-					{#if loaderVisible}
-						<div class="absolute inset-0 z-30" out:fade={{ duration: 460 }}>
-							<LoadingScene
-								lines={bootLines}
-								{activeLine}
-								flash={previewLive}
-								onFlashComplete={() => (loaderVisible = false)}
-							/>
-						</div>
-					{/if}
-				</div>
+				<section class="df-editor-group">
+					<div class="df-breadcrumb df-mono">
+						<span class="df-heading">{session.source.label}</span>
+						{#if session.selectedFile}
+							<span>/</span>
+							{#each session.selectedFile.split('/') as part (part)}
+								<span>{part}</span><span>/</span>
+							{/each}
+						{/if}
+						{#if session.isSaving}<span class="df-glow">saving…</span>{/if}
+					</div>
+					<div class="df-editor"><EditorPane {session} /></div>
+				</section>
+				<section class="df-preview" class:pointer-events-none={dragging !== null}>
+					<div class="df-preview-header df-heading">Preview</div>
+					<div class="df-preview-body">
+						{#if portal.portals.length > 0}
+							<Portal {portal} onBeforeReload={() => session.saveAll()} showPort={true} />
+						{/if}
+						{#if loaderVisible}
+							<div class="absolute inset-0 z-30" out:fade={{ duration: 460 }}>
+								<LoadingScene
+									lines={bootLines}
+									{activeLine}
+									flash={previewLive}
+									onFlashComplete={() => (loaderVisible = false)}
+								/>
+							</div>
+						{/if}
+					</div>
+				</section>
 			</div>
 
 			<button
@@ -352,32 +414,132 @@
 				class="df-divider df-divider-row"
 				class:active={dragging === 'terminal'}
 				onmousedown={startTerminalDrag}
-				aria-label="Resize terminal panel"
+				aria-label="Resize panel"
 			>
 				<div class="df-divider-line"></div>
 			</button>
 
-			<div class="df-terminal" style="height: {terminalHeight}px;">
-				<TerminalTabs {session} bind:outputEl />
-			</div>
+			<section class="df-panel" style="height: {terminalHeight}px;">
+				<div class="df-panel-tabs">
+					{#each bottomTabs as tab (tab.id)}
+						<button
+							type="button"
+							class="df-panel-tab df-mono"
+							class:active={bottomTab === tab.id}
+							onclick={() => (bottomTab = tab.id)}
+						>
+							<Icon icon={tab.icon} width="11" height="11" />
+							{tab.label}
+							{#if tab.id === 'sync' && syncIssues.length > 0}
+								<span class="df-sync-badge">{syncIssues.length}</span>
+							{/if}
+						</button>
+					{/each}
+					<span class="df-panel-spacer"></span>
+					<span class="df-panel-hint df-mono">{statusPort}</span>
+				</div>
+				<div class="df-panel-body">
+					<div class="df-terminal-host" class:df-hidden={bottomTab !== 'terminal'}>
+						<TerminalTabs {session} bind:outputEl />
+					</div>
+					{#if bottomTab === 'problems'}
+						<div class="df-panel-placeholder df-mono">
+							No problems have been detected in the workspace.
+						</div>
+					{:else if bottomTab === 'output'}
+						<div class="df-panel-placeholder df-mono">
+							Use the Output tab in Terminal for build logs.
+						</div>
+					{:else if bottomTab === 'debug'}
+						<div class="df-panel-placeholder df-mono">Debug console is not attached.</div>
+					{:else if bottomTab === 'sync'}
+						<div class="df-sync-list df-mono">
+							{#if session.saveError}
+								<div class="df-sync-issue error">
+									<strong>Last save</strong>
+									<span>{session.saveError}</span>
+								</div>
+							{/if}
+							{#if syncIssues.length === 0}
+								<div class="df-sync-empty">
+									No sync conflicts or failed writes. Terminal-created files are pushed to Dragon86
+									on the next poll.
+								</div>
+							{:else}
+								{#each syncIssues as issue (issue.id)}
+									<div class="df-sync-issue" class:error={issue.level === 'error'}>
+										<strong>{issue.kind}{issue.path ? ` · ${issue.path}` : ''}</strong>
+										<span>{issue.message}</span>
+										{#if issue.kind === 'conflict'}
+											<div class="df-sync-actions">
+												<button
+													type="button"
+													class="df-btn"
+													disabled={resolving === issue.id}
+													onclick={() => void resolveIssue(issue.id, 'local')}
+												>
+													Use BrowserPod copy
+												</button>
+												<button
+													type="button"
+													class="df-btn"
+													disabled={resolving === issue.id}
+													onclick={() => void resolveIssue(issue.id, 'remote')}
+												>
+													Use Dragon86 copy
+												</button>
+											</div>
+										{/if}
+									</div>
+								{/each}
+							{/if}
+						</div>
+					{:else if bottomTab === 'ports'}
+						<div class="df-port-list df-mono">
+							{#if portal.portals.length === 0}
+								<div>No forwarded ports yet.</div>
+							{:else}
+								{#each portal.portals as item (item.port)}
+									<div class="df-port-row">
+										<span class="df-glow">:{item.port}</span><span>{item.url}</span>
+									</div>
+								{/each}
+							{/if}
+						</div>
+					{/if}
+				</div>
+			</section>
 		</div>
 	</div>
 
-	<!-- ── Status bar ───────────────────────────────────────────────────── -->
 	<footer class="df-statusbar">
-		<span class="df-status-item df-glow">{title}</span>
-		<span class="df-status-item"><Icon icon={modeIcon} width="11" height="11" /> {modeLabel}</span>
-		<span class="df-status-item"
+		<span class="df-status-item df-heading df-glow">{title}</span>
+		<span class="df-status-item df-mono"
+			><Icon icon={modeIcon} width="11" height="11" /> {modeLabel}</span
+		>
+		<span class="df-status-item df-mono"
 			><Icon icon="mingcute:git-branch-line" width="11" height="11" /> {statusBranch}</span
 		>
-		<span class="df-status-item"
+		<span class="df-status-item df-mono"
 			><Icon icon="mingcute:refresh-line" width="11" height="11" /> {statusFs}</span
 		>
+		<span class="df-status-item df-mono">{statusPeer}</span>
+		{#if bridgeSession}
+			<span class="df-status-item df-mono" title={bridgeSession.label}>
+				<Icon icon="mingcute:link-line" width="11" height="11" />
+				{bridgeSession.dedicated ? bridgeSession.channelName : bridgeSession.label}
+			</span>
+		{/if}
+		{#if syncIssues.length > 0}
+			<span class="df-status-item df-mono df-sync-status">
+				<Icon icon="mingcute:warning-line" width="11" height="11" />
+				{syncIssues.length} sync issue{syncIssues.length === 1 ? '' : 's'}
+			</span>
+		{/if}
 		<span class="df-status-spacer"></span>
-		<span class="df-status-item"
-			><Icon icon="mingcute:server-line" width="11" height="11" /> {statusPort}</span
-		>
-		<span class="df-status-item">{session.selectedFile || 'no file selected'}</span>
+		<span class="df-status-item df-mono">{status || 'workspace'}</span>
+		<span class="df-status-item df-mono">{session.selectedFile || 'no file'}</span>
+		<span class="df-status-item df-mono">{statusPort}</span>
 	</footer>
 </div>
 
@@ -391,19 +553,21 @@
 		min-width: 0;
 		flex-direction: column;
 		overflow: hidden;
-		background:
-			radial-gradient(ellipse at 15% -10%, rgba(var(--dragon86-rgb), 0.14), transparent 55%),
-			var(--color-bc-abyss);
+		border: 1px solid var(--border-color-light);
+		box-shadow:
+			0 10px 45px rgba(0, 0, 0, 0.7),
+			0 0 25px rgba(var(--theme-rgb), 0.12);
 	}
-	.df-header {
+	.df-titlebar {
 		display: flex;
-		height: 44px;
-		flex: 0 0 44px;
+		height: 38px;
+		flex: 0 0 38px;
 		align-items: center;
-		gap: 10px;
-		border-bottom: 1px solid var(--color-bc-border);
-		background: var(--color-bc-navy);
-		padding: 0 12px;
+		gap: 14px;
+		border-bottom: 1px solid var(--theme-dim);
+		background: rgba(5, 5, 5, 0.92);
+		backdrop-filter: blur(20px);
+		padding: 0 10px 0 12px;
 	}
 	.df-brand {
 		display: inline-flex;
@@ -416,42 +580,47 @@
 		width: 24px;
 		height: 24px;
 		place-items: center;
-		border: 1px solid rgba(var(--dragon86-rgb), 0.55);
-		border-radius: 7px;
-		background: rgba(var(--dragon86-rgb), 0.12);
-		box-shadow: 0 0 14px rgba(var(--dragon86-rgb), 0.25);
+		border: 1px solid rgba(var(--theme-rgb), 0.45);
+		border-radius: 6px;
+		background: rgba(var(--theme-rgb), 0.1);
+		box-shadow: 0 0 12px rgba(var(--theme-rgb), 0.35);
 	}
 	.df-title {
-		font-size: 13px;
+		font-size: 12px;
 	}
-	.df-header-sep {
-		width: 1px;
-		height: 18px;
-		flex-shrink: 0;
-		background: var(--color-bc-border);
-	}
-	.df-breadcrumb {
+	.df-menu {
 		display: flex;
 		min-width: 0;
 		flex: 1;
 		align-items: center;
-		gap: 6px;
-		font-size: 11px;
+		gap: 12px;
 	}
-	.df-header-mode {
+	.df-menu-item {
+		font-size: 9px;
+		letter-spacing: 0.8px;
+		color: var(--text-dim);
+		white-space: nowrap;
+	}
+	.df-title-actions {
 		display: inline-flex;
-		flex-shrink: 0;
 		align-items: center;
-		gap: 6px;
-		border: 1px solid rgba(var(--dragon86-rgb), 0.35);
+		gap: 8px;
+		flex-shrink: 0;
+	}
+	.df-mode-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		border: 1px solid rgba(var(--theme-rgb), 0.35);
 		border-radius: 999px;
-		background: rgba(var(--dragon86-rgb), 0.08);
+		background: rgba(var(--theme-rgb), 0.08);
 		padding: 4px 9px;
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		color: var(--color-bc-azure);
+		font-size: 9px;
+		color: var(--theme-bright);
+	}
+	.df-mode-switch {
+		padding: 5px 9px;
+		font-size: 0.6rem;
 	}
 	.df-failure {
 		display: flex;
@@ -461,18 +630,16 @@
 		border-bottom: 1px solid rgba(255, 107, 107, 0.4);
 		background: rgba(255, 107, 107, 0.08);
 		padding: 8px 12px;
-		font:
-			11px/1.45 ui-monospace,
-			monospace;
+		font: 11px/1.45 var(--font-mono);
 	}
-	.df-reload {
-		flex-shrink: 0;
-		border: 1px solid var(--color-bc-border);
-		border-radius: 7px;
-		background: var(--color-bc-surface);
-		color: var(--color-bc-text);
-		padding: 4px 9px;
-		cursor: pointer;
+	.df-failure p {
+		margin: 0;
+	}
+	.df-failure p:first-child {
+		font-size: 11px;
+	}
+	.df-failure p:last-child {
+		color: var(--text-dim);
 	}
 	.df-body {
 		position: relative;
@@ -481,18 +648,18 @@
 		flex: 1;
 		overflow: hidden;
 	}
-	.df-rail {
+	.df-activity {
 		display: flex;
 		width: 48px;
 		flex: 0 0 48px;
 		flex-direction: column;
 		justify-content: space-between;
-		border-right: 1px solid var(--color-bc-border);
-		background: var(--color-bc-navy);
+		border-right: 1px solid var(--border-color);
+		background: var(--vs-activity);
 		padding: 8px 6px;
 	}
-	.df-rail-top,
-	.df-rail-bottom {
+	.df-activity-top,
+	.df-activity-bottom {
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
@@ -502,62 +669,62 @@
 		width: 36px;
 		height: 36px;
 		place-items: center;
-		border: none;
-		border-radius: 8px;
+		border: 1px solid transparent;
+		border-radius: 6px;
 		background: transparent;
-		color: var(--color-bc-icon);
+		color: var(--text-dim);
 		cursor: pointer;
-		transition: 0.15s ease;
+		transition: var(--t-fast);
 	}
 	:global(.df-rail-btn:hover) {
-		background: rgba(var(--dragon86-rgb), 0.08);
-		color: var(--color-bc-text);
+		background: rgba(var(--theme-rgb), 0.12);
+		color: var(--text-primary);
 	}
-	.df-side {
+	.df-sidebar {
 		display: flex;
 		flex-shrink: 0;
 		flex-direction: column;
 		min-height: 0;
-		background: var(--color-bc-surface);
+		background: var(--vs-sidebar);
 	}
-	.df-side-header {
+	.df-sidebar-header {
 		display: flex;
 		height: 34px;
 		flex: 0 0 34px;
 		align-items: center;
 		justify-content: space-between;
-		border-bottom: 1px solid var(--color-bc-border);
+		border-bottom: 1px solid var(--border-color);
 		padding: 0 10px;
 		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		color: var(--color-bc-text-muted);
+		color: var(--text-secondary);
 	}
-	.df-side-body {
-		min-height: 0;
-		flex: 1;
-		overflow: hidden;
-		padding: 5px;
+	.df-sidebar-actions {
+		display: flex;
+		gap: 3px;
 	}
 	.df-icon-btn {
 		display: grid;
-		width: 22px;
-		height: 22px;
+		width: 24px;
+		height: 24px;
 		place-items: center;
 		border: none;
 		border-radius: 5px;
 		background: transparent;
-		color: var(--color-bc-icon);
+		color: var(--text-dim);
 		cursor: pointer;
 	}
 	.df-icon-btn:hover:not(:disabled) {
-		background: rgba(var(--dragon86-rgb), 0.12);
-		color: var(--color-bc-azure);
+		background: rgba(var(--theme-rgb), 0.12);
+		color: var(--theme-bright);
 	}
 	.df-icon-btn:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
+	}
+	.df-sidebar-body {
+		min-height: 0;
+		flex: 1;
+		overflow: hidden;
 	}
 	.df-main {
 		display: flex;
@@ -575,12 +742,37 @@
 	.df-top.dragging .df-preview {
 		pointer-events: none;
 	}
-	.df-editor {
+	.df-editor-group {
 		display: flex;
 		min-width: 0;
 		min-height: 0;
 		flex: 1.15 1 0;
 		flex-direction: column;
+		overflow: hidden;
+		border-right: 1px solid var(--vs-border);
+		background: var(--vs-editor);
+	}
+	.df-breadcrumb {
+		display: flex;
+		height: 24px;
+		flex: 0 0 24px;
+		align-items: center;
+		gap: 5px;
+		overflow: hidden;
+		border-bottom: 1px solid var(--border-color);
+		background: var(--bg-card);
+		padding: 0 10px;
+		font-size: 10px;
+		color: var(--text-dim);
+		white-space: nowrap;
+	}
+	.df-breadcrumb .df-heading {
+		font-size: 9px;
+		color: var(--text-secondary);
+	}
+	.df-editor {
+		min-height: 0;
+		flex: 1;
 		overflow: hidden;
 	}
 	.df-preview {
@@ -590,20 +782,109 @@
 		min-height: 0;
 		flex: 0.85 1 0;
 		flex-direction: column;
-		border-left: 1px solid var(--color-bc-border);
+		overflow: hidden;
+		background: var(--bg-dark);
+	}
+	.df-preview-header {
+		display: flex;
+		height: 24px;
+		flex: 0 0 24px;
+		align-items: center;
+		border-bottom: 1px solid var(--border-color);
+		background: var(--vs-tab-inactive);
+		padding: 0 10px;
+		font-size: 9px;
+		color: var(--text-dim);
+	}
+	.df-preview-body {
+		position: relative;
+		min-height: 0;
+		flex: 1;
+		display: flex;
+		flex-direction: column;
 		overflow: hidden;
 	}
-	.df-terminal {
+	.df-panel {
+		display: flex;
 		min-height: 0;
 		flex-shrink: 0;
-		border-top: 1px solid var(--color-bc-border);
-		background: var(--color-bc-terminal);
+		flex-direction: column;
+		border-top: 1px solid var(--border-color);
+		background: var(--vs-panel);
 		overflow: hidden;
+	}
+	.df-panel-tabs {
+		display: flex;
+		height: 30px;
+		flex: 0 0 30px;
+		align-items: center;
+		gap: 2px;
+		border-bottom: 1px solid var(--border-color);
+		background: var(--bg-darkest);
+		padding: 0 8px;
+	}
+	.df-panel-tab {
+		display: inline-flex;
+		height: 100%;
+		align-items: center;
+		gap: 5px;
+		border: none;
+		border-bottom: 2px solid transparent;
+		background: transparent;
+		padding: 0 10px;
+		font-size: 10px;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--text-dim);
+		cursor: pointer;
+	}
+	.df-panel-tab:hover {
+		color: var(--text-secondary);
+	}
+	.df-panel-tab.active {
+		border-bottom-color: var(--theme-primary);
+		color: var(--text-primary);
+		background: rgba(var(--theme-rgb), 0.08);
+	}
+	.df-panel-spacer {
+		flex: 1;
+	}
+	.df-panel-hint {
+		font-size: 10px;
+		color: var(--text-dim);
+	}
+	.df-panel-body {
+		position: relative;
+		min-height: 0;
+		flex: 1;
+		overflow: hidden;
+	}
+	.df-terminal-host {
+		position: absolute;
+		inset: 0;
+	}
+	.df-hidden {
+		visibility: hidden;
+		pointer-events: none;
+	}
+	.df-panel-placeholder,
+	.df-port-list {
+		position: absolute;
+		inset: 0;
+		overflow: auto;
+		padding: 10px 12px;
+		font-size: 11px;
+		color: var(--text-dim);
+	}
+	.df-port-row {
+		display: flex;
+		gap: 12px;
+		padding: 4px 0;
 	}
 	.df-divider {
 		position: relative;
-		flex-shrink: 0;
 		z-index: 10;
+		flex-shrink: 0;
 		border: none;
 		background: transparent;
 		padding: 0;
@@ -619,7 +900,7 @@
 	.df-divider-line {
 		position: absolute;
 		border-radius: 9999px;
-		background: color-mix(in srgb, var(--color-bc-mist) 12%, transparent);
+		background: color-mix(in srgb, var(--text-dim) 30%, transparent);
 		transition: 0.15s ease;
 	}
 	.df-divider-col .df-divider-line {
@@ -636,27 +917,28 @@
 	}
 	.df-divider:hover .df-divider-line,
 	.df-divider.active .df-divider-line {
-		background: var(--color-bc-azure);
-		box-shadow: 0 0 8px rgba(var(--dragon86-rgb), 0.5);
+		background: var(--theme-primary);
+		box-shadow: 0 0 8px rgba(var(--theme-rgb), 0.5);
 	}
 	.df-statusbar {
 		display: flex;
-		height: 24px;
-		flex: 0 0 24px;
+		height: 26px;
+		flex: 0 0 26px;
 		align-items: center;
 		gap: 14px;
-		border-top: 1px solid var(--color-bc-border);
-		background: var(--color-bc-statusbar);
+		background: var(--vs-statusbar);
+		border-top: 1px solid var(--theme-primary);
 		padding: 0 10px;
+		box-shadow: 0 -4px 18px rgba(var(--theme-rgb), 0.25);
 		font-size: 10px;
-		color: var(--color-bc-text-muted);
+		color: #fff;
 	}
 	.df-status-item {
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		white-space: nowrap;
 		overflow: hidden;
+		white-space: nowrap;
 		text-overflow: ellipsis;
 	}
 	.df-status-spacer {
@@ -669,25 +951,84 @@
 		border: none;
 		background: rgba(0, 0, 0, 0.55);
 	}
+	.df-sync-badge {
+		display: inline-grid;
+		min-width: 16px;
+		height: 16px;
+		place-items: center;
+		border-radius: 999px;
+		background: var(--theme-primary);
+		color: #fff;
+		font-size: 9px;
+		box-shadow: 0 0 8px rgba(var(--theme-rgb), 0.5);
+	}
+	.df-sync-list {
+		position: absolute;
+		inset: 0;
+		overflow: auto;
+		padding: 10px 12px;
+		font-size: 11px;
+	}
+	.df-sync-empty {
+		color: var(--text-dim);
+	}
+	.df-sync-issue {
+		display: grid;
+		gap: 4px;
+		margin-bottom: 8px;
+		border: 1px solid var(--border-color-light);
+		border-radius: 6px;
+		background: var(--bg-card);
+		padding: 8px 10px;
+	}
+	.df-sync-issue.error {
+		border-color: rgba(255, 107, 107, 0.5);
+		background: rgba(255, 107, 107, 0.06);
+	}
+	.df-sync-issue strong {
+		font-family: var(--font-heading);
+		font-size: 10px;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--theme-bright);
+	}
+	.df-sync-issue span {
+		color: var(--text-secondary);
+	}
+	.df-sync-actions {
+		display: flex;
+		gap: 6px;
+		margin-top: 4px;
+	}
+	.df-sync-actions .df-btn {
+		padding: 4px 8px;
+		font-size: 0.6rem;
+	}
+	.df-sync-status {
+		color: #ffd479;
+	}
 	@media (max-width: 900px) {
-		.df-header-mode {
+		.df-menu {
+			display: none;
+		}
+		.df-mode-chip {
 			display: none;
 		}
 		.df-top {
 			flex-direction: column;
 		}
-		.df-editor {
+		.df-editor-group {
 			flex: 1 1 55%;
+			border-right: 0;
+			border-bottom: 1px solid var(--vs-border);
 		}
 		.df-preview {
 			flex: 1 1 45%;
-			border-left: 0;
-			border-top: 1px solid var(--color-bc-border);
 		}
-		.df-body.is-mobile .df-side {
+		.df-body.is-mobile .df-sidebar {
 			position: fixed;
-			top: 44px;
-			bottom: 24px;
+			top: 38px;
+			bottom: 26px;
 			left: 48px;
 			z-index: 30;
 			box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7);
@@ -695,7 +1036,7 @@
 		.df-body.is-mobile .df-divider-col {
 			display: none;
 		}
-		.df-status-item:nth-child(n + 4) {
+		.df-status-item:nth-child(n + 8) {
 			display: none;
 		}
 	}

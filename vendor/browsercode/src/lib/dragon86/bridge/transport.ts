@@ -32,7 +32,7 @@ export class PostMessageTransport implements BridgeTransport {
 	private readonly onWindowMessage = (ev: MessageEvent) => this.handle(ev);
 
 	constructor(private readonly onPeerOrigin?: (origin: string) => void) {
-		window.addEventListener('message', this.onWindowMessage);
+		if (typeof window !== 'undefined') window.addEventListener('message', this.onWindowMessage);
 	}
 
 	onMessage(handler: (msg: IncomingMessage) => void): void {
@@ -42,19 +42,22 @@ export class PostMessageTransport implements BridgeTransport {
 		this.fsHandler = handler;
 	}
 	send(msg: OutgoingMessage): void {
-		if (this.peerOrigin === null || window.parent === window) return;
+		if (typeof window === 'undefined' || this.peerOrigin === null || window.parent === window)
+			return;
 		window.parent.postMessage(msg, this.peerOrigin);
 	}
 	sendFs(msg: FsRequestMessage): void {
-		if (this.peerOrigin === null || window.parent === window) return;
+		if (typeof window === 'undefined' || this.peerOrigin === null || window.parent === window)
+			return;
 		window.parent.postMessage(msg, this.peerOrigin);
 	}
 	close(): void {
-		window.removeEventListener('message', this.onWindowMessage);
+		if (typeof window !== 'undefined') window.removeEventListener('message', this.onWindowMessage);
 	}
 
 	private handle(ev: MessageEvent): void {
-		if (window.parent === window || ev.source !== window.parent) return;
+		if (typeof window === 'undefined' || window.parent === window || ev.source !== window.parent)
+			return;
 		if (!isOriginAllowed(ev.origin)) {
 			this.warnRejectedHello(ev);
 			return;
@@ -98,11 +101,13 @@ export class BroadcastChannelTransport implements BridgeTransport {
 	private readonly channel: BroadcastChannel | null;
 	private readonly onChannelMessage = (ev: MessageEvent) => this.handle(ev);
 	readonly available: boolean;
+	readonly channelName: string;
 
 	constructor(
 		channelName: string = BROADCAST_CHANNEL_NAME,
 		private readonly onHello?: () => void
 	) {
+		this.channelName = channelName;
 		try {
 			this.channel =
 				typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(channelName);

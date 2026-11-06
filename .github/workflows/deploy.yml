@@ -35,9 +35,9 @@ jobs:
           PAGES_BASE: /DrakeForge
           NODE_OPTIONS: --max-old-space-size=4096
         run: npm run check
-      - name: Test bundled 9p client/server
+      - name: Run 9p, session, and sync-safety tests
         working-directory: vendor/browsercode
-        run: npm run test:p9
+        run: npm run test
       - name: Build static site
         working-directory: vendor/browsercode
         env:

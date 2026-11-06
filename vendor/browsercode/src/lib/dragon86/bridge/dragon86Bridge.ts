@@ -7,20 +7,32 @@
  */
 import type { BrowserPod, Terminal } from '@leaningtech/browserpod';
 import { writeToTerminal } from '$lib/pod/fs';
-import { BroadcastChannelTransport, CompositeTransport, PostMessageTransport } from './transport';
 import { FsClient } from './fsClient';
 import { HosterBridge } from './hosterBridge';
+import {
+	createBridgeTransport,
+	resolveBridgeSession,
+	type BridgeRuntime,
+	type BridgeSessionConfig
+} from './session';
 import { FS_CAP, READY_FALLBACK_MS } from './config';
 
 export interface Dragon86BridgeHooks {
 	onState?: (text: string) => void;
 	onPeer?: (text: string) => void;
 	onFs?: (text: string) => void;
+	onSyncIssues?: (issues: unknown[]) => void;
+}
+
+export interface Dragon86BridgeOptions {
+	session?: BridgeSessionConfig;
 }
 
 export class Dragon86Bridge {
 	readonly fsClient: FsClient;
-	private readonly transport: CompositeTransport;
+	readonly session: BridgeSessionConfig;
+	readonly runtime: BridgeRuntime;
+	private readonly transport: BridgeRuntime['transport'];
 	private readonly bridge: HosterBridge;
 	private engine: { write(data: string): void; resize(cols: number, rows: number): void } | null =
 		null;
@@ -30,16 +42,17 @@ export class Dragon86Bridge {
 
 	constructor(
 		private readonly workdir: string,
-		private readonly hooks: Dragon86BridgeHooks = {}
+		private readonly hooks: Dragon86BridgeHooks = {},
+		options: Dragon86BridgeOptions = {}
 	) {
+		this.session =
+			options.session ??
+			resolveBridgeSession(
+				new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search)
+			);
 		const onPeer = (text: string) => this.hooks.onPeer?.(text);
-		const frameTransport = new PostMessageTransport((origin) =>
-			onPeer(`Embedded peer hello from ${origin}`)
-		);
-		const tabTransport = new BroadcastChannelTransport(undefined, () =>
-			onPeer('Separate-tab peer hello')
-		);
-		this.transport = new CompositeTransport([frameTransport, tabTransport]);
+		this.runtime = createBridgeTransport(this.session, { onPeer });
+		this.transport = this.runtime.transport;
 		this.fsClient = new FsClient(this.transport);
 		this.bridge = new HosterBridge(
 			this.transport,
@@ -56,9 +69,9 @@ export class Dragon86Bridge {
 		);
 		this.hooks.onState?.('Waiting for Dragon86 hello…');
 		this.hooks.onPeer?.(
-			tabTransport.available
-				? 'Listening on the dragon86-hoster-v1 channel'
-				: 'BroadcastChannel unavailable; embedded mode only'
+			this.runtime.usesBroadcast && !this.runtime.broadcastAvailable
+				? `${this.runtime.status} — BroadcastChannel unavailable`
+				: this.runtime.status
 		);
 	}
 
