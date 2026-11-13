@@ -1,6 +1,9 @@
-# Cross-origin isolation for SharedArrayBuffer. Do not remove.
-# GitHub Pages ignores this file; static/coi-serviceworker.js supplies the headers there.
-/*
+# GitHub Pages ignores this file; static/coi-serviceworker.js supplies COOP/COEP
+# on Pages. Hosts that do honor `_headers` must keep these project-local: DrakeForge
+# is a project site at /DrakeForge/, so origin-wide /* headers would also isolate
+# Dragon86 and the PS1 emulator. BrowserPod boots on both connected and standalone
+# DrakeForge routes, so the narrowest compatible server-side scope is /DrakeForge/*.
+/DrakeForge/*
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
   Cross-Origin-Resource-Policy: cross-origin
