@@ -110,6 +110,12 @@ The layout is modeled on VS Code and Dragon86's real `src/styles/theme.css` / `s
 
 The **Agents** activity view is inline: `AgentsPanel.svelte` constructs an `AgentSession` and renders `AgentShell` in the side bar. `src/lib/agents/session.svelte.ts` gained an optional `onRestart` hook so changing a credential relaunches only that inline CLI session instead of reloading the whole workspace tab. `GitPanel.svelte` runs real git commands in the Output terminal. The bottom panel has VS Code-style Problems/Output/Debug Console/**Sync**/Terminal/Ports tabs; the Sync tab lists failed writes, poll errors, and conflicts with **Use BrowserPod copy** / **Use Dragon86 copy** buttons. The terminal stays mounted and spans the full workspace width. See `docs/link-to-dragon86.md` for the connection explanation.
 
+## Agent API credentials
+
+`src/lib/config/tools.ts` declares an optional `CredentialSpec` per CLI. `CredentialGate` blocks the boot until a secret is present, `CredentialCard` lets the user paste it, and `bootCLI` injects `config.env()` into the CLI process at launch. Codex uses this for `OPENAI_API_KEY`; the new **OpenRouter** option uses the same mechanism for `OPENROUTER_API_KEY`.
+
+`src/lib/agents/openrouter.ts` reuses the pinned Pi CLI rather than adding another runtime. It keeps the key in browser `localStorage`, launches Pi with `PI_CODING_AGENT_DIR` pointing at a dedicated directory, and writes a `settings.json` preset with `defaultProvider: "openrouter"`, Pi's bundled default OpenRouter model, and `enabledModels: ["openrouter/*"]`. CLI args also force `--provider openrouter`, that model, and an `openrouter/*` cycling scope. A separate `storageKey` prevents the OpenRouter preset from overwriting regular Pi login/model state. No key is committed or included in the static build.
+
 ## Implementation map
 
 - `src/routes/+page.svelte` and `src/lib/dragon86/components/Workspace.svelte` — one browser tab per workspace; root `?mode=standalone` redirects to `/standalone`.
@@ -119,10 +125,11 @@ The **Agents** activity view is inline: `AgentsPanel.svelte` constructs an `Agen
 - `src/routes/+layout.svelte` and `src/lib/dragon86/theme.css` — global VS Code/Dragon86 chrome and exact Dragon Red tokens.
 - `src/lib/dragon86/components/Dragon86IdeShell.svelte` — title/menu bar, activity bar, side bar, editor group, preview group, bottom panel, and status bar.
 - `src/lib/dragon86/components/AgentsPanel.svelte` — inline agent CLI runner; `GitPanel.svelte` — Source Control actions.
+- `src/lib/agents/openrouter.ts` and `src/lib/config/tools.ts` — key-only OpenRouter agent option: local API-key storage, `OPENROUTER_API_KEY` launch env, and a dedicated Pi settings preset scoped to `openrouter/*`.
 - `src/lib/dragon86/bridge/` — Cheerpx-Bridge-derived v1/v2 protocol, transports, session routing (`session.ts`), hoster handshake, fs1 client, and the BrowserPod-backed `Dragon86Bridge`.
 - `src/lib/dragon86/fs/` — `RemoteFs` interface, fs1 and 9p implementations, three-way `SyncedWorkspaceFs`, and the `ProjectSource` adapter.
 - `src/lib/dragon86/p9/` — copied Dragon86 9p handler, literal-frame client, Worker server, and Worker transport.
-- `tools/p9/test.ts`, `tools/bridge/test.ts`, `tools/sync/test.ts`, `tools/launcher/test.ts` — Node loopback 9p test, dedicated/embedded/reconnect/multi-session bridge tests, terminal/conflict/failure sync-safety tests, and Dragon86 launcher URL/target/standalone-route/COI-scope contract tests. `npm run test` runs all four.
+- `tools/p9/test.ts`, `tools/bridge/test.ts`, `tools/sync/test.ts`, `tools/launcher/test.ts`, `tools/openrouter/test.ts` — Node loopback 9p test, dedicated/embedded/reconnect/multi-session bridge tests, terminal/conflict/failure sync-safety tests, Dragon86 launcher URL/target/standalone-route/COI-scope contract tests, and OpenRouter key/preset/env contract tests. `npm run test` runs all five.
 - `src/lib/ide/project-source.ts`, `runtime.ts`, `session.svelte.ts`, and `pod-runtime.ts` — small optional hooks for wrapping `WorkspaceFs`, watching remote trees, and attaching a hoster after BrowserPod boots.
 - Upstream `IdeShell.svelte` remains in the tree but is no longer the entry UI; old landing/agent routes redirect rather than opening a second workspace.
 

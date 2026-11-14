@@ -35,7 +35,11 @@ Layout:
 - VS Code-style **bottom panel** with Problems, Output, Debug Console, **Sync**, Terminal, and Ports tabs. The Sync panel surfaces failed writes, remote poll errors, and concurrent-edit conflicts with explicit local/remote resolution. The terminal spans the full workspace width and is resizable.
 - Dragon Red **status bar** built from the same `linear-gradient(135deg,#e60012,#4a0000)` swatch Dragon86 uses for its Dragon Red theme.
 
-The Git activity view echoes real `git status`, `log`, `add`, `commit`, `pull`, and `push` commands into the Output terminal. The **Agents** activity view runs the selected CLI agent inline through `AgentShell` in the same browser tab — no `/agents/[tool]` page and no `target="_blank"` launcher. Only one agent CLI is active at a time; switching tools or changing a credential relaunches that inline session without reloading the workspace. Provider OAuth may still open a temporary sign-in tab.
+The Git activity view echoes real `git status`, `log`, `add`, `commit`, `pull`, and `push` commands into the Output terminal. The **Agents** activity view runs the selected CLI agent inline through `AgentShell` in the same browser tab — no `/agents/[tool]` page and no `target="_blank"` launcher. Only one agent CLI is active at a time; switching tools or changing a credential relaunches that inline session without reloading the workspace. Provider OAuth may still open a temporary sign-in tab; the OpenRouter option uses a pasted API key instead.
+
+## AI agent APIs
+
+Available inline agent CLIs include Claude Code, Codex CLI, Pi, and **OpenRouter**. Select **OpenRouter** in the Agents activity (or open the workspace with `?agent=openrouter`) and paste an OpenRouter API key into the credential card. DrakeForge stores that key only in this browser's `localStorage`, injects it as `OPENROUTER_API_KEY` when the Pi CLI launches, and uses a dedicated Pi agent directory scoped to `openrouter/*` models. The key is never committed, never placed in `.env`, and never baked into the static Pages bundle. Usage is billed per token to your OpenRouter account. Use the key button in the agent terminal to replace the saved key and restart that inline session.
 
 ## Link to Dragon86
 
@@ -74,6 +78,8 @@ BrowserPod needs `SharedArrayBuffer`. GitHub Pages cannot set `COOP`/`COEP` dire
 
 Add a BrowserPod key authorized for `https://dragon-gaming-platforms.github.io` as the repository Actions secret **`VITE_API_KEY`**. The workflow injects it at build time only. It is never committed; note that `VITE_*` values are visible in the static client bundle, so the key must be origin-restricted.
 
+The **OpenRouter** agent key is different: it is a user-pasted runtime credential stored in browser `localStorage`, not a build secret. See [AI agent APIs](#ai-agent-apis).
+
 ## Local development
 
 ```sh
@@ -83,7 +89,7 @@ cp .env.example .env       # optional local BrowserPod key
 npm run dev                # http://localhost:5173/DrakeForge/
 npm run check
 npm run lint
-npm run test               # 9p loopback + bridge + sync-safety + launcher tests
+npm run test               # 9p loopback + bridge + sync + launcher + OpenRouter tests
 NODE_OPTIONS=--max-old-space-size=4096 PAGES_BASE=/DrakeForge PAGES_FALLBACK=404.html npm run build
 ```
 

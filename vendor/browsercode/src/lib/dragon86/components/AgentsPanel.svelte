@@ -64,6 +64,14 @@
 		</div>
 	</div>
 
+	{#if tool === 'openrouter'}
+		<p class="df-agent-note">
+			<Icon icon="mingcute:key-2-line" width="12" height="12" />
+			OpenRouter uses a pasted API key saved in this browser. Use the key button in the terminal to replace
+			it; the inline agent session restarts with the new key.
+		</p>
+	{/if}
+
 	<div class="df-agent-terminal df-card">
 		{#if session.lock === 'taken'}
 			<DuplicateTabDialog />
