@@ -94,6 +94,14 @@ The sync layer ignores paths outside the IDE workdir (for example BrowserPod's `
 
 `tools/p9/test.ts` runs the real server and client over an in-process loopback with ZenFS `InMemory`, exercising the wire format without a browser.
 
+## Dragon86 launcher and route-local isolation
+
+`integrations/dragon86/drakeforge.d86` (canonical) and `BrowserCode-IDE.d86` (legacy name) are **launcher pointers**, not IDE shells. They open `https://dragon-gaming-platforms.github.io/DrakeForge/standalone` with `target="_blank"` and `rel="noopener noreferrer"`, contain no iframe, no scripts, and no copied BrowserCode components, and state that the destination is a separate top-level tab. `src/routes/standalone/+page.svelte` still renders the existing `<Workspace mode="standalone" />`. The old `/?mode=standalone` root alias and the Workspace mode switch now redirect to the dedicated `/standalone` route.
+
+The new tab is a top-level browsing context, so `src/app.html` registers `coi-serviceworker.js` there to supply BrowserPod's COOP/COEP and `SharedArrayBuffer`. Dragon86 and the PS1 emulator are not made cross-origin isolated. The worker is explicitly scoped to `/DrakeForge/`: GitHub Pages cannot set per-route response headers, `_headers` is inert on Pages, and BrowserPod boots on both connected and standalone routes, so standalone-only narrowing would break connected mode. `static/_headers` uses `/DrakeForge/*` rather than `/*` for hosts that honor it, and `vite.config.ts` uses a project-path middleware instead of global `server.headers`/`preview.headers`. See `docs/link-to-dragon86.md#10-constraints-on-route-local-isolation` for the full constraint list.
+
+Dragon86's Files HTML preview is sandboxed with `allow-forms allow-popups` but not `allow-popups-to-escape-sandbox`; launched tabs can inherit those restrictions. The launcher must be installed as `drakeforge.d86` in `~/applications` or opened through Dragon86's built-in app entry, which uses a normal OS window. We do not change Dragon86's viewer or sandbox flags.
+
 ## UI shell
 
 DrakeForge is now a **single workspace entry point**. `src/routes/+page.svelte` opens the connected workspace; `/dragon86` and `/standalone` are mode aliases; `/agents`, `/agents/[tool]`, `/ide`, and `/embed` redirect back into it. `src/routes/+layout.svelte` removes BrowserCode's sidebar, ribbon, tour, announcement bar, and utility bar, and imports the global Dragon86 theme.
@@ -104,14 +112,17 @@ The **Agents** activity view is inline: `AgentsPanel.svelte` constructs an `Agen
 
 ## Implementation map
 
-- `src/routes/+page.svelte` and `src/lib/dragon86/components/Workspace.svelte` — one browser tab per workspace; owns the Dragon86/9p source and `IdeSession`.
+- `src/routes/+page.svelte` and `src/lib/dragon86/components/Workspace.svelte` — one browser tab per workspace; root `?mode=standalone` redirects to `/standalone`.
+- `src/routes/standalone/+page.svelte` — existing standalone BrowserCode UI; renders `<Workspace mode="standalone" />`.
+- `integrations/dragon86/drakeforge.d86` and `BrowserCode-IDE.d86` — no-iframe separate-tab launchers to `/DrakeForge/standalone`.
+- `src/app.html`, `static/coi-serviceworker.js`, `static/_headers`, `vite.config.ts` — top-level, project-scoped COOP/COEP for BrowserPod; no origin-wide header broadening.
 - `src/routes/+layout.svelte` and `src/lib/dragon86/theme.css` — global VS Code/Dragon86 chrome and exact Dragon Red tokens.
 - `src/lib/dragon86/components/Dragon86IdeShell.svelte` — title/menu bar, activity bar, side bar, editor group, preview group, bottom panel, and status bar.
 - `src/lib/dragon86/components/AgentsPanel.svelte` — inline agent CLI runner; `GitPanel.svelte` — Source Control actions.
 - `src/lib/dragon86/bridge/` — Cheerpx-Bridge-derived v1/v2 protocol, transports, session routing (`session.ts`), hoster handshake, fs1 client, and the BrowserPod-backed `Dragon86Bridge`.
 - `src/lib/dragon86/fs/` — `RemoteFs` interface, fs1 and 9p implementations, three-way `SyncedWorkspaceFs`, and the `ProjectSource` adapter.
 - `src/lib/dragon86/p9/` — copied Dragon86 9p handler, literal-frame client, Worker server, and Worker transport.
-- `tools/p9/test.ts`, `tools/bridge/test.ts`, `tools/sync/test.ts` — Node loopback 9p test, dedicated/embedded/reconnect/multi-session bridge tests, and terminal/conflict/failure sync-safety tests. `npm run test` runs all three.
+- `tools/p9/test.ts`, `tools/bridge/test.ts`, `tools/sync/test.ts`, `tools/launcher/test.ts` — Node loopback 9p test, dedicated/embedded/reconnect/multi-session bridge tests, terminal/conflict/failure sync-safety tests, and Dragon86 launcher URL/target/standalone-route/COI-scope contract tests. `npm run test` runs all four.
 - `src/lib/ide/project-source.ts`, `runtime.ts`, `session.svelte.ts`, and `pod-runtime.ts` — small optional hooks for wrapping `WorkspaceFs`, watching remote trees, and attaching a hoster after BrowserPod boots.
 - Upstream `IdeShell.svelte` remains in the tree but is no longer the entry UI; old landing/agent routes redirect rather than opening a second workspace.
 

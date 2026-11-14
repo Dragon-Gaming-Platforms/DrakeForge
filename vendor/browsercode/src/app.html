@@ -7,19 +7,27 @@
 		<link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
 		<!--
 			Cross-origin isolation for BrowserPod's SharedArrayBuffer. GitHub Pages cannot set
-			COOP/COEP headers itself, so coi-serviceworker adds them on the first top-level
-			visit and reloads once. When DrakeForge is embedded in Dragon86, the already-isolated
-			top page supplies isolation and this frame must NOT register its own worker.
+			COOP/COEP response headers itself, so coi-serviceworker adds them on the first
+			top-level visit and reloads once. Its scope is deliberately the /DrakeForge/
+			project path, not the origin root: a separate standalone tab establishes
+			isolation in its own browsing context without making Dragon86 or the PS1
+			emulator cross-origin isolated. Embedded frames must NOT register their own
+			worker; they rely on the parent's isolation when applicable.
 			This script must run before every other script.
 		-->
 		<script>
-			window.coi = {
-				shouldRegister: () => window.parent === window && window.crossOriginIsolated !== true,
-				shouldDeregister: () => false,
-				coepCredentialless: () => false,
-				coepDegrade: () => false,
-				quiet: true
-			};
+			(() => {
+				const assets = '%sveltekit.assets%';
+				const projectScope = `${assets.replace(/\/$/, '')}/`;
+				window.coi = {
+					shouldRegister: () => window.parent === window && window.crossOriginIsolated !== true,
+					shouldDeregister: () => false,
+					coepCredentialless: () => false,
+					coepDegrade: () => false,
+					quiet: true,
+					scope: projectScope
+				};
+			})();
 		</script>
 		<script src="%sveltekit.assets%/coi-serviceworker.js"></script>
 		<link

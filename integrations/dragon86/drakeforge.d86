@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DrakeForge</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    box-sizing: border-box;
+    background: radial-gradient(circle at 20% 10%, #4a0000 0, #0a0a0a 55%, #050505 100%);
+    color: #f0f0f0;
+    font: 15px/1.55 system-ui, sans-serif;
+  }
+  main {
+    max-width: 34rem;
+    padding: 26px;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    background: rgba(13, 13, 13, 0.92);
+  }
+  h1 { margin: 0 0 12px; font-size: 21px; }
+  p { margin: 0 0 14px; color: #aaaaaa; }
+  strong { color: #f0f0f0; }
+  a {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 10px 16px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #e60012, #4a0000);
+    color: #fff;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  code { color: #ff4d5a; }
+  .note { margin-bottom: 0; font-size: 12px; color: #666666; }
+</style>
+</head>
+<body>
+<!--
+  Canonical Dragon86 app shortcut. The filename `drakeforge.d86` matches the
+  `drakeforge` entry in Dragon86's iframe-apps.json, so the OS app launcher
+  opens its built-in new-tab launcher. This HTML is also a standalone pointer
+  when viewed directly: it never embeds or recreates the DrakeForge IDE.
+-->
+<main>
+  <h1>DrakeForge opens in a separate tab</h1>
+  <p>
+    This app shortcut launches DrakeForge's existing standalone BrowserCode UI at
+    <code>/DrakeForge/standalone</code> in a <strong>top-level browser tab</strong>.
+    No iframe, no copied IDE components, and no cross-origin-isolation requirement
+    is placed on Dragon86 or the PS1 emulator. The standalone tab establishes the
+    COOP/COEP that BrowserPod needs for <code>SharedArrayBuffer</code>.
+  </p>
+  <a
+    id="drakeforge-launch"
+    href="https://dragon-gaming-platforms.github.io/DrakeForge/standalone"
+    target="_blank"
+    rel="noopener noreferrer"
+    data-launch-mode="separate-top-level-tab"
+  >Open DrakeForge in a new tab</a>
+  <p class="note">
+    Standalone mode uses DrakeForge's own 9p Worker and IndexedDB; it does not
+    connect to Dragon86's <code>fs1</code> filesystem. Launch this as an app
+    shortcut, not from the Files app's sandboxed HTML preview.
+  </p>
+</main>
+</body>
+</html>

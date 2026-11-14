@@ -72,6 +72,8 @@ if (typeof window === 'undefined') {
             coepDegrade: () => true,
             doReload: () => window.location.reload(),
             quiet: false,
+            // DrakeForge patch: an explicit, project-local registration scope.
+            scope: undefined,
             ...window.coi
         };
 
@@ -121,7 +123,10 @@ if (typeof window === 'undefined') {
             return;
         }
 
-        n.serviceWorker.register(window.document.currentScript.src).then(
+        const scriptUrl = window.document.currentScript.src;
+        const registrationOptions =
+            typeof coi.scope === "string" && coi.scope ? { scope: coi.scope } : undefined;
+        n.serviceWorker.register(scriptUrl, registrationOptions).then(
             (registration) => {
                 !coi.quiet && console.log("COOP/COEP Service Worker registered", registration.scope);
 

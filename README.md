@@ -2,13 +2,14 @@
 
 DrakeForge is a GitHub Pages-hosted fork of [BrowserCode](https://github.com/leaningtech/browsercode) that opens **one unified IDE workspace per browser tab**. It is themed after VS Code's layout and Dragon86's real "Dragon Red" stylesheet.
 
-| Route                                                      | Mode                                        | Filesystem                                            | Dragon86 changes                |
-| ---------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------- | ------------------------------- |
-| `/DrakeForge/`                                             | **Unified workspace, connected by default** | Dragon86 ZenFS `/home/user` over `fs1`                | **None**                        |
-| `/DrakeForge/dragon86`                                     | Connected alias                             | Same as root                                          | **None**                        |
-| `/DrakeForge/dragon86?channel=dragon86-drakeforge-<uuid>`  | **Agent-assigned dedicated session**        | Same `fs1`, isolated BroadcastChannel                 | **None**                        |
-| `/DrakeForge/?mode=embed`                                  | Embedded iframe                             | Same `fs1` over parent-frame `postMessage` only       | **None**                        |
-| `/DrakeForge/standalone` or `/DrakeForge/?mode=standalone` | **Standalone**                              | Bundled in-browser 9p2000.L server on ZenFS/IndexedDB | None; does not contact Dragon86 |
+| Route                                                             | Mode                                        | Filesystem                                                 | Dragon86 changes                   |
+| ----------------------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------- | ---------------------------------- |
+| `/DrakeForge/`                                                    | **Unified workspace, connected by default** | Dragon86 ZenFS `/home/user` over `fs1`                     | **None**                           |
+| `/DrakeForge/dragon86`                                            | Connected alias                             | Same as root                                               | **None**                           |
+| `/DrakeForge/dragon86?channel=dragon86-drakeforge-<uuid>`         | **Agent-assigned dedicated session**        | Same `fs1`, isolated BroadcastChannel                      | **None**                           |
+| `/DrakeForge/?mode=embed`                                         | Embedded iframe                             | Same `fs1` over parent-frame `postMessage` only            | **None**                           |
+| `/DrakeForge/standalone` (old `/?mode=standalone` redirects here) | **Standalone**                              | Bundled in-browser 9p2000.L server on ZenFS/IndexedDB      | None; does not contact Dragon86    |
+| `integrations/dragon86/drakeforge.d86`                            | **Dragon86 launcher**                       | Opens `/DrakeForge/standalone` in a separate top-level tab | None; no iframe or COI on Dragon86 |
 
 The old BrowserCode landing, `/ide`, `/agents`, `/agents/[tool]` and `/embed` pages now redirect into this single workspace. The IDE runtime remains: Monaco editor, BrowserPod terminal, npm/dev-server previews, portals, CLI agents, Git commands, templates where reachable from the runtime, and the Java/CheerpJ runtime are not replaced.
 
@@ -57,13 +58,15 @@ BrowserPod has no public mount hook, so `SyncedWorkspaceFs` mirrors the remote t
 4. Press **Reconnect** / **Open Engine Tab**.
 5. Dragon86 sends `hello`; DrakeForge answers `ready` once BrowserPod and its bridged bash shell are live. Dragon86's terminal then drives that shell while the workspace UI stays in the DrakeForge tab.
 
-Default remote root: `/Dragon86-IDE` inside `/home/user`. Override with `?root=/Documents` or `?root=/`. Use `?mode=embed` and `integrations/dragon86/BrowserCode-IDE.d86` to embed the workspace inside a Dragon86 window; Dragon86's top page supplies cross-origin isolation. Embedded mode intentionally disables BroadcastChannel.
+Default remote root: `/Dragon86-IDE` inside `/home/user`. Override with `?root=/Documents` or `?root=/`. `?mode=embed` remains available for explicit embedded use and intentionally disables BroadcastChannel, but the Dragon86 app launcher now uses `integrations/dragon86/drakeforge.d86` to open the **standalone** workspace in a separate top-level tab instead. The new tab establishes its own COOP/COEP; Dragon86 and the PS1 emulator are not made cross-origin isolated.
 
 Both Pages sites share `https://dragon-gaming-platforms.github.io`, which is why the BroadcastChannel works. A custom domain would break tab mode.
 
 ## Standalone mode
 
-`/DrakeForge/standalone` or `/DrakeForge/?mode=standalone` needs no Dragon86 tab. A Web Worker configures ZenFS (`/home` on IndexedDB, `/tmp` in memory), seeds a small Node project, runs Dragon86's `createP9Handler`, and exchanges raw 9p2000.L frames with the page over `postMessage`. Files persist in that browser's IndexedDB and are mirrored into BrowserPod through the same sync layer.
+`/DrakeForge/standalone` needs no Dragon86 tab; the old `/?mode=standalone` alias redirects there. A Web Worker configures ZenFS (`/home` on IndexedDB, `/tmp` in memory), seeds a small Node project, runs Dragon86's `createP9Handler`, and exchanges raw 9p2000.L frames with the page over `postMessage`. Files persist in that browser's IndexedDB and are mirrored into BrowserPod through the same sync layer.
+
+The Dragon86 launcher at `integrations/dragon86/drakeforge.d86` (and the legacy `BrowserCode-IDE.d86`) is only a pointer: it opens `/DrakeForge/standalone` with `target="_blank"` and `rel="noopener noreferrer"`, contains no iframe, no scripts, and none of the IDE UI. Install it as `drakeforge.d86` in Dragon86's `~/applications` so the OS app registry launches it; the Files app's sandboxed HTML preview is not a full browsing context. The standalone page registers `coi-serviceworker.js` itself in that top-level tab to supply BrowserPod's `SharedArrayBuffer` COOP/COEP. GitHub Pages cannot set per-route response headers, so the worker is scoped to the `/DrakeForge/` project path rather than the origin; see [docs/link-to-dragon86.md](docs/link-to-dragon86.md#10-constraints-on-route-local-isolation).
 
 ## Cross-origin isolation and API key
 
@@ -80,7 +83,7 @@ cp .env.example .env       # optional local BrowserPod key
 npm run dev                # http://localhost:5173/DrakeForge/
 npm run check
 npm run lint
-npm run test               # 9p loopback + dedicated/embedded bridge + sync-safety tests
+npm run test               # 9p loopback + bridge + sync-safety + launcher tests
 NODE_OPTIONS=--max-old-space-size=4096 PAGES_BASE=/DrakeForge PAGES_FALLBACK=404.html npm run build
 ```
 
@@ -88,7 +91,7 @@ The Monaco/TypeScript workers push Vite's production build past Node's default 2
 
 ## Deployment
 
-`.github/workflows/deploy.yml` runs `check`, `lint`, and the full `npm run test` suite on PRs to `main`, then deploys `vendor/browsercode/dist` after a `main` push or manual dispatch with `actions/deploy-pages`. Set Pages → Build and deployment → Source: **GitHub Actions** once; the workflow's `configure-pages` step also attempts this.
+`.github/workflows/deploy.yml` runs `check`, `lint`, and the full `npm run test` suite (including launcher URL/target tests) on PRs to `main`, then deploys `vendor/browsercode/dist` after a `main` push or manual dispatch with `actions/deploy-pages`. Set Pages → Build and deployment → Source: **GitHub Actions** once; the workflow's `configure-pages` step also attempts this.
 
 ## Provenance and licenses
 

@@ -72,10 +72,16 @@
 	}
 
 	function switchMode(next: Mode): void {
+		if (next === 'standalone') {
+			const url = new URL(appHref('/standalone'), $page.url.origin);
+			if (requestedRoot) url.searchParams.set('root', requestedRoot);
+			if (requestedAgent) url.searchParams.set('agent', requestedAgent);
+			window.location.href = url.href;
+			return;
+		}
 		const url = new URL(appHref('/'), $page.url.origin);
-		if (next === 'standalone') url.searchParams.set('mode', 'standalone');
 		if (requestedRoot) url.searchParams.set('root', requestedRoot);
-		if (next === 'connected' && bridgeSession?.sessionChannel)
+		if (bridgeSession?.sessionChannel)
 			url.searchParams.set('channel', bridgeSession.sessionChannel);
 		window.location.href = url.href;
 	}
