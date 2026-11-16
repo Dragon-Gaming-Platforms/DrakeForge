@@ -31,11 +31,12 @@ The Dragon86 app launcher uses the **standalone** workspace instead: it opens `/
 
 Other query options can be combined with connected URLs:
 
-| Query              | Meaning                                                                             |
-| ------------------ | ----------------------------------------------------------------------------------- |
-| `?root=/Documents` | Use a different project root inside Dragon86 `/home/user`. Default `/Dragon86-IDE`. |
-| `?root=/`          | Use all of `/home/user`.                                                            |
-| `?agent=codex`     | Open the inline Agents activity with Codex selected.                                |
+| Query               | Meaning                                                                             |
+| ------------------- | ----------------------------------------------------------------------------------- |
+| `?root=/Documents`  | Use a different project root inside Dragon86 `/home/user`. Default `/Dragon86-IDE`. |
+| `?root=/`           | Use all of `/home/user`.                                                            |
+| `?agent=codex`      | Open the inline Agents activity with Codex selected.                                |
+| `?agent=openrouter` | Open the inline Agents activity with the key-only OpenRouter option selected.       |
 
 `/agents`, `/agents/[tool]`, `/ide`, and `/embed` redirect into the unified workspace. The standalone route ignores `channel`; it does not use Dragon86's `fs1` bridge.
 
@@ -126,7 +127,8 @@ This is eventual, whole-file consistency — not byte-range POSIX semantics.
 - `tools/p9/test.ts` — standalone 9p client/server round-trip;
 - `tools/bridge/test.ts` — dedicated/embedded/default URL contract, no default-channel leakage, embedded postMessage-only, hello/ready + `fs1`, reload/reconnect, multiple sessions, and simultaneous CheerpX use;
 - `tools/sync/test.ts` — remote→local and local→remote edits, terminal-created file push, failed-write retry/error surfacing, concurrent-edit conflict preservation/resolution, and remote poll failure surfacing;
-- `tools/launcher/test.ts` — both `.d86` launchers point to `/DrakeForge/standalone` with `target="_blank"` and `rel="noopener noreferrer"`, contain no iframe/scripts/embed URL, clearly say "separate top-level tab", the standalone route still renders the real `Workspace`, the root alias redirects, and COI remains project-local.
+- `tools/launcher/test.ts` — both `.d86` launchers point to `/DrakeForge/standalone` with `target="_blank"` and `rel="noopener noreferrer"`, contain no iframe/scripts/embed URL, clearly say "separate top-level tab", the standalone route still renders the real `Workspace`, the root alias redirects, and COI remains project-local;
+- `tools/openrouter/test.ts` — the OpenRouter tool is enabled, has a paste-your-own-key credential, uses the existing Pi CLI with an `openrouter/*`-scoped preset, persists the pasted key locally, and injects it as `OPENROUTER_API_KEY` without committing a key.
 
 These are automated protocol, sync, and static-contract tests. A live BrowserPod/Dragon86 end-to-end run also needs the `VITE_API_KEY` secret and a real Dragon86 app launcher.
 
@@ -135,6 +137,8 @@ These are automated protocol, sync, and static-contract tests. A live BrowserPod
 BrowserPod needs `SharedArrayBuffer`, which requires `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` on the document. The standalone launcher opens a **top-level** tab, so `src/app.html` registers `coi-serviceworker.js` in that tab's own browsing context. It reloads once, then the controlled responses carry the COOP/COEP headers.
 
 Embedded mode would have to inherit isolation from the parent Dragon86 page. The launcher avoids that: Dragon86 and the PS1 emulator are never put behind COOP/COEP, and no `cross-origin-isolated` permission is delegated through an iframe.
+
+The **OpenRouter** agent option is a separate, user-pasted runtime credential. Selecting it (or `?agent=openrouter`) shows the standard credential card; the key is stored in browser `localStorage`, injected as `OPENROUTER_API_KEY` when the Pi CLI launches, and never committed or baked into the static bundle. DrakeForge writes an OpenRouter-only Pi settings preset in a dedicated Pi agent directory so the regular Pi tool's provider/model and `/login` state are not changed. Usage is billed per token to the user's OpenRouter account.
 
 ## 10. Constraints on route-local isolation
 
@@ -167,3 +171,4 @@ No response headers were broadened to unrelated pages, and no unrelated Dragon86
 | Standalone worker fails               | IndexedDB unavailable, or the 9p Worker bundle was not rebuilt.                             |
 | Launcher opens a broken/sandboxed tab | It was opened from the Files HTML preview; launch the `.d86` as an app shortcut instead.    |
 | Agent CLI opens a tab                 | Only OAuth sign-in should do that; the CLI itself runs inline.                              |
+| OpenRouter has no available model     | Paste/replace the OpenRouter key with the key button; the session restarts inline.          |

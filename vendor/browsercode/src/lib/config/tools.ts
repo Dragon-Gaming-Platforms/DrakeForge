@@ -7,10 +7,18 @@ import {
 	CODEX_BIN_PATH
 } from '$lib/agents/codex';
 import { openPiUrl, piEnv, preparePiPod, PI_CLI_PATH } from '$lib/agents/pi';
+import {
+	getOpenRouterApiKey,
+	openRouterEnv,
+	openRouterOpenCallback,
+	OPENROUTER_ARGS,
+	prepareOpenRouterPod,
+	setOpenRouterApiKey
+} from '$lib/agents/openrouter';
 import opencodeLogoSrc from '$lib/assets/opencode-logo.svg';
 import piLogoSrc from '$lib/assets/pi-logo.svg';
 
-export type ToolId = 'claude' | 'antigravity' | 'codex' | 'pi' | 'opencode';
+export type ToolId = 'claude' | 'antigravity' | 'codex' | 'pi' | 'openrouter' | 'opencode';
 
 /**
  * Exactly one of the two, never both: `icon` is an Iconify name (tinted by `accentClass`);
@@ -58,6 +66,15 @@ export const toolItems: ToolItem[] = [
 		accentClass: 'bg-bc-green/10 text-bc-green',
 		dotClass: 'bg-bc-green',
 		note: 'Anthropic, OpenAI, Gemini and OpenRouter supported today'
+	},
+	{
+		id: 'openrouter',
+		icon: 'mingcute:cloud-line',
+		label: 'OpenRouter',
+		disabled: false,
+		accentClass: 'bg-bc-azure/10 text-bc-azure',
+		dotClass: 'bg-bc-azure',
+		note: 'Paste an OpenRouter API key'
 	},
 	{
 		id: 'antigravity',
@@ -177,5 +194,28 @@ export const cliConfigs: Record<string, CLIConfig> = {
 		openCallback: openPiUrl,
 		prepare: preparePiPod,
 		env: piEnv
+	},
+	openrouter: {
+		// Same pinned Pi CLI, but a separate persistent /home and Pi agent directory so the
+		// OpenRouter preset cannot overwrite a regular Pi login or model selection.
+		storageKey: 'pi-openrouter',
+		command: 'node',
+		args: [...OPENROUTER_ARGS],
+		openCallback: openRouterOpenCallback,
+		prepare: prepareOpenRouterPod,
+		env: openRouterEnv,
+		credential: {
+			label: 'OpenRouter API key',
+			placeholder: 'sk-or-v1-…',
+			consoleUrl: 'https://openrouter.ai/keys',
+			createLabel: 'Create API key',
+			signInReason:
+				'OpenRouter browser sign-in is not used here; paste an API key to start the agent.',
+			rationale:
+				"It's saved in this browser so you only paste it once, and sent to OpenRouter when Pi runs. " +
+				'Usage is billed per token to your OpenRouter account.',
+			get: getOpenRouterApiKey,
+			set: setOpenRouterApiKey
+		}
 	}
 };
