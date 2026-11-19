@@ -51,6 +51,8 @@ export interface SyncedFsHooks {
 	onStatus?: (text: string, level?: 'info' | 'warn' | 'error') => void;
 	onSnapshot?: (snapshot: RemoteSnapshot) => void;
 	onIssues?: (issues: SyncIssue[]) => void;
+	onRemoteLive?: () => void;
+	onRemoteUnavailable?: (message: string) => void;
 }
 
 interface LocalSignature {
@@ -169,6 +171,7 @@ export class SyncedWorkspaceFs implements WorkspaceFs, SyncController {
 		this.localBaseline = new Map(local);
 		this.lastLocal = new Map(local);
 		this.initialized = true;
+		this.hooks.onRemoteLive?.();
 		this.emitSnapshot(remoteEntries, local);
 		this.emitIssues();
 	}
@@ -362,12 +365,14 @@ export class SyncedWorkspaceFs implements WorkspaceFs, SyncController {
 			this.lastLocal = new Map(currentLocal);
 			await this.reconcile(nextRemote, currentLocal);
 			await this.refreshBaselines();
+			this.hooks.onRemoteLive?.();
 			if (!this.announced) {
 				this.announced = true;
 				this.hooks.onStatus?.(`Synchronized ${remoteEntries.length} remote entries`, 'info');
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
+			this.hooks.onRemoteUnavailable?.(message);
 			this.reportIssue({
 				id: issueId('remote-sync-failed'),
 				kind: 'remote-sync-failed',

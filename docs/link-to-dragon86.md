@@ -81,12 +81,12 @@ DrakeForge → Dragon86  { v:1, t:"data", d:string }            shell output, ba
 DrakeForge → Dragon86  { v:1, t:"exit", code }
 ```
 
-`ready` advertises `fs1` only after `remote.tree()` has answered, so Dragon86 does not start issuing filesystem requests against a half-booted workspace.
+`ready` advertises `fs1` only after DrakeForge has fetched the remote tree, hydrated the BrowserPod workspace, and completed the initial sync snapshot. An unavailable channel or failed mount is shown as disconnected/error; DrakeForge does not treat a local-only workspace as a successful Dragon86 connection. Repeated `hello` messages are handled, including after a DrakeForge reload.
 
 ### v2 — whole-file `fs1`
 
 ```text
-DrakeForge → Dragon86  { v:2, t:"fs-req", id, op, path?, to?, data? }
+DrakeForge → Dragon86  { via:"bc-hoster", v:2, t:"fs-req", id, op, path?, to?, data? }
 Dragon86 → DrakeForge  { v:2, t:"fs-res", id, ok, error?, entries?, tree?, data?, stat? }
 ```
 
@@ -112,7 +112,9 @@ BrowserPod's public API exposes `openFile`, `createFile`, `createDirectory`, `ru
 5. Concurrent divergent edits **are not overwritten**. DrakeForge writes a `*.drakeforge-remote-<timestamp>` copy locally, reports a conflict in the bottom **Sync** panel and status bar, and lets the user choose **Use BrowserPod copy** or **Use Dragon86 copy**.
 6. Remote poll errors, failed writes, and unreadable files are reported as sync issues rather than silently losing changes.
 
-This is eventual, whole-file consistency — not byte-range POSIX semantics.
+This is eventual, whole-file consistency — not byte-range POSIX semantics. The connected workspace uses the `fs1` whole-file bridge; it does **not** change or integrate the Terminal's separate 9P transport.
+
+The UUID channel name avoids accidental cross-talk between concurrent sessions; it is **not an authorization boundary**. Anyone on the same origin who learns the name may join that BroadcastChannel. Do not put secrets in the channel name or treat it as access control.
 
 ## 7. Standalone mode is a different link
 
@@ -125,7 +127,8 @@ This is eventual, whole-file consistency — not byte-range POSIX semantics.
 `npm run test` in `vendor/browsercode` runs:
 
 - `tools/p9/test.ts` — standalone 9p client/server round-trip;
-- `tools/bridge/test.ts` — dedicated/embedded/default URL contract, no default-channel leakage, embedded postMessage-only, hello/ready + `fs1`, reload/reconnect, multiple sessions, and simultaneous CheerpX use;
+- `tools/bridge/test.ts` — exact dedicated-channel validation, no default-channel leakage, embedded postMessage-only, mount-gated hello/ready + `fs1`, reload/reconnect, multiple sessions, and simultaneous CheerpX use;
+- `tools/fs1/test.ts` — CRUD contract, structured-clone byte preservation, path-escape rejection, 16 MiB / 5,000-entry limits, remote errors/timeouts, and no local-only fallback on disconnect;
 - `tools/sync/test.ts` — remote→local and local→remote edits, terminal-created file push, failed-write retry/error surfacing, concurrent-edit conflict preservation/resolution, and remote poll failure surfacing;
 - `tools/launcher/test.ts` — both `.d86` launchers point to `/DrakeForge/standalone` with `target="_blank"` and `rel="noopener noreferrer"`, contain no iframe/scripts/embed URL, clearly say "separate top-level tab", the standalone route still renders the real `Workspace`, the root alias redirects, and COI remains project-local;
 - `tools/openrouter/test.ts` — the OpenRouter tool is enabled, has a paste-your-own-key credential, uses the existing Pi CLI with an `openrouter/*`-scoped preset, persists the pasted key locally, and injects it as `OPENROUTER_API_KEY` without committing a key.

@@ -117,6 +117,7 @@
 							shutdown: () => undefined
 						},
 						onRemoteLive: () => bridge?.setFsLive(true),
+						onRemoteUnavailable: (message) => bridge?.setFsLive(false, message),
 						onStatus: (text) => (fsState = text),
 						onIssues: (issues) => (syncIssues = issues),
 						onSyncController: (controller) => (syncController = controller),

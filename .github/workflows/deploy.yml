@@ -35,7 +35,7 @@ jobs:
           PAGES_BASE: /DrakeForge
           NODE_OPTIONS: --max-old-space-size=4096
         run: npm run check
-      - name: Run 9p, session, sync, launcher, and OpenRouter tests
+      - name: Run 9p, session, fs1, sync, launcher, and OpenRouter tests
         working-directory: vendor/browsercode
         run: npm run test
       - name: Build static site

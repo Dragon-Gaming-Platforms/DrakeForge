@@ -5,7 +5,13 @@
  * booted/streaming. Output is batched and the first prompt is replayed after
  * the handshake. fs1 capability changes re-announce ready.
  */
-import { BACKLOG_MAX_BYTES, FLUSH_INTERVAL_MS, FLUSH_MAX_BYTES, PROTOCOL_VERSION } from './config';
+import {
+	BACKLOG_MAX_BYTES,
+	FLUSH_INTERVAL_MS,
+	FLUSH_MAX_BYTES,
+	FS_CAP,
+	PROTOCOL_VERSION
+} from './config';
 import type { BridgeTransport } from './transport';
 import type { IncomingMessage } from './protocol';
 
@@ -69,7 +75,12 @@ export class HosterBridge {
 	}
 
 	refreshReady(): void {
-		if (!this.announcedReady || this.exited) return;
+		if (!this.announcedReady || this.exited) {
+			this.maybeAnnounceReady();
+			return;
+		}
+		const readyCaps = this.hooks.getReadyCaps?.() ?? [];
+		if (this.peerCaps.has(FS_CAP) && !readyCaps.includes(FS_CAP)) return;
 		this.lastReadyAt = performance.now();
 		this.sendReady();
 		this.hooks.onPeerReady?.();
@@ -97,6 +108,10 @@ export class HosterBridge {
 
 	private maybeAnnounceReady(): void {
 		if (!this.engineReady || !this.peerSeen || this.exited) return;
+		// A Dragon86 hello that asks for fs1 must not receive ready until the
+		// remote share has been mounted and verified by a successful tree/read.
+		const readyCaps = this.hooks.getReadyCaps?.() ?? [];
+		if (this.peerCaps.has(FS_CAP) && !readyCaps.includes(FS_CAP)) return;
 		const now = performance.now();
 		if (this.announcedReady && now - this.lastReadyAt < 300) return;
 		const first = !this.announcedReady;

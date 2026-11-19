@@ -52,7 +52,7 @@ Dragon86 already advertises `caps: ["fs1"]` and serves `/home/user` over:
 
 DrakeForge implements the _hoster/client_ side of that Cheerpx-Bridge-compatible contract: `hello` → `ready`, terminal `data`/`resize`/`exit`, and whole-file `fs-req`/`fs-res`. A dedicated `?channel=` session opens only its assigned BroadcastChannel; `?mode=embed` opens only postMessage; no `channel` keeps the default for backward compatibility. This is **not raw 9p**; Dragon86's `p9.ts` is an in-page v86 virtio callback, not a network endpoint. The standalone mode bundles that 9p handler in a Web Worker instead and speaks literal 9p frames over `postMessage`.
 
-BrowserPod has no public mount hook, so `SyncedWorkspaceFs` mirrors the remote tree into `/home/user/dragon86` inside BrowserPod and performs a three-way reconcile every 2 seconds. It scans the pod workdir so terminal-created files are pushed too; failed writes are surfaced and retried; concurrent divergent edits are preserved as a conflict with a remote copy, not silently overwritten. The `fs1` path is capped at 16 MB per file and 5,000 tree entries, matching Dragon86.
+BrowserPod has no public mount hook, so `SyncedWorkspaceFs` mirrors the remote tree into `/home/user/dragon86` inside BrowserPod and performs a three-way reconcile every 2 seconds. It scans the pod workdir so terminal-created files are pushed too; failed writes are surfaced and retried; concurrent divergent edits are preserved as a conflict with a remote copy, not silently overwritten. The `fs1` path is capped at 16 MiB per file/message and 5,000 tree entries, matching Dragon86. A session channel must match the supplied `dragon86-drakeforge-<uuid>` name exactly; malformed or repeated channel parameters are rejected rather than rewritten or sent over another transport. The random channel name prevents accidental cross-talk only—it is not authorization or an isolation boundary. This workspace connection uses `fs1` and does not modify or claim to be the Terminal's 9P integration.
 
 ## Connected setup
 
@@ -89,7 +89,7 @@ cp .env.example .env       # optional local BrowserPod key
 npm run dev                # http://localhost:5173/DrakeForge/
 npm run check
 npm run lint
-npm run test               # 9p loopback + bridge + sync + launcher + OpenRouter tests
+npm run test               # 9p loopback + bridge + fs1 + sync + launcher + OpenRouter tests
 NODE_OPTIONS=--max-old-space-size=4096 PAGES_BASE=/DrakeForge PAGES_FALLBACK=404.html npm run build
 ```
 
