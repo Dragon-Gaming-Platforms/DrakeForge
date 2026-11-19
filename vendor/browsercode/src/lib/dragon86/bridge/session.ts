@@ -43,7 +43,11 @@ export interface BridgeTransportHooks {
 /** Resolve the URL contract into exactly one session policy. */
 export function resolveBridgeSession(params: URLSearchParams): BridgeSessionConfig {
 	const embedded = params.get('mode') === 'embed';
-	const rawChannel = params.get('channel');
+	const channelValues = params.getAll('channel');
+	if (channelValues.length > 1) {
+		throw new Error('Invalid Dragon86 session channel. Supply exactly one channel parameter.');
+	}
+	const rawChannel = channelValues[0] ?? null;
 
 	if (embedded) {
 		return {

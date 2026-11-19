@@ -30,7 +30,8 @@ export const SESSION_CHANNEL_PATTERN =
 /** Validate an agent-supplied session channel; throws rather than falling back to default. */
 export function normalizeSessionChannel(value: string | null | undefined): string | null {
 	if (value === null || value === undefined || value === '') return null;
-	const channel = value.trim();
+	// The channel is an opaque rendezvous name: validate it but never rewrite it.
+	const channel = value;
 	if (!SESSION_CHANNEL_PATTERN.test(channel)) {
 		throw new Error(
 			`Invalid Dragon86 session channel. Expected ${SESSION_CHANNEL_PREFIX}<uuid>, got "${value}".`
@@ -62,6 +63,10 @@ export const READY_FALLBACK_MS = 2000;
 
 /** Whole-file fs1 requests can take a while, but a missing OS must not hang boot. */
 export const FS_REQUEST_TIMEOUT_MS = 8000;
+/** Dragon86 fs1 is whole-file and whole-message: 16 MiB maximum. */
+export const FS_MAX_BYTES = 16 * 1024 * 1024;
+/** Bound remote tree responses to Dragon86's documented entry limit. */
+export const FS_MAX_TREE_ENTRIES = 5000;
 export const FS_SYNC_INTERVAL_MS = 2000;
 
 /** Default remote project root. `?root=/` selects all of Dragon86's /home/user. */

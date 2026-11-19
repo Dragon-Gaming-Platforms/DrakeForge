@@ -76,11 +76,16 @@ export class Dragon86Bridge {
 	}
 
 	/** Announce fs1 only once the remote tree has answered at least once. */
-	setFsLive(live: boolean): void {
-		if (this.fsLive === live) return;
+	setFsLive(live: boolean, detail = ''): void {
+		if (this.fsLive === live && live) return;
 		this.fsLive = live;
-		this.hooks.onFs?.(live ? 'fs1 live — ZenFS files available' : 'fs1 unavailable');
-		if (live) this.bridge.refreshReady();
+		this.hooks.onFs?.(
+			live
+				? 'Connected — Dragon86 filesystem mounted'
+				: `Disconnected — Dragon86 filesystem unavailable${detail ? `: ${detail}` : ''}`
+		);
+		if (!live) this.hooks.onState?.('Disconnected from Dragon86 filesystem');
+		else this.bridge.refreshReady();
 	}
 
 	/** PodAttachment hook called by PodRuntime.boot once BrowserPod is up. */

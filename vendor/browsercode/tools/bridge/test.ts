@@ -15,6 +15,7 @@ import {
 } from '../../src/lib/dragon86/bridge/config';
 import {
 	BroadcastChannelTransport,
+	LoopbackTransport,
 	PostMessageTransport,
 	type FsRequestMessage,
 	type OutgoingMessage
@@ -183,6 +184,10 @@ test('URL contract: dedicated session, embedded postMessage-only, legacy default
 	assert.equal(legacy.dedicated, false);
 
 	assert.throws(() => sessionConfig(new URLSearchParams('channel=not-a-session')));
+	assert.throws(() => sessionConfig(new URLSearchParams(`channel=%20${CHANNEL_A}%20`)));
+	assert.throws(() =>
+		sessionConfig(new URLSearchParams(`channel=${CHANNEL_A}&channel=${CHANNEL_B}`))
+	);
 });
 
 test('dedicated session opens only its assigned channel and never the default channel', async () => {
@@ -266,6 +271,28 @@ test('embedded mode uses parent postMessage only; BroadcastChannel is never cons
 	}
 });
 
+test('fs1 hello waits for a mounted filesystem and repeated hello re-announces ready', async () => {
+	const transport = new LoopbackTransport();
+	const sent: OutgoingMessage[] = [];
+	let mounted = false;
+	transport.onPeerMessage((message) => sent.push(message));
+	const bridge = new HosterBridge(transport, fakeEngine(), {
+		getReadyCaps: () => (mounted ? ['fs1'] : [])
+	});
+	bridge.markEngineReady();
+	transport.sendToHoster({ v: PROTOCOL_VERSION, t: 'hello', caps: ['fs1'] });
+	assert.deepEqual(sent, [], 'ready must wait for the remote filesystem mount');
+
+	mounted = true;
+	bridge.refreshReady();
+	assert.deepEqual(sent.at(-1), { v: PROTOCOL_VERSION, t: 'ready', caps: ['fs1'] });
+	await delay(320);
+	transport.sendToHoster({ v: PROTOCOL_VERSION, t: 'hello', caps: ['fs1'] });
+	assert.deepEqual(sent.at(-1), { v: PROTOCOL_VERSION, t: 'ready', caps: ['fs1'] });
+	assert.equal(sent.filter((message) => message.t === 'ready').length, 2);
+	transport.close();
+});
+
 test('separate dedicated session: hello/ready and fs1 tree on the assigned channel', async () => {
 	const config = sessionConfig(new URLSearchParams(`channel=${CHANNEL_A}`));
 	const runtime = createBridgeTransport(config);
@@ -285,8 +312,11 @@ test('separate dedicated session: hello/ready and fs1 tree on the assigned chann
 		const ready = await readyPromise;
 		assert.deepEqual(ready.caps, ['fs1']);
 
+		let requestVia: unknown;
 		hoster.onmessage = (ev) => {
-			const req = ev.data as FsRequestMessage;
+			const envelope = ev.data as Record<string, unknown>;
+			const req = envelope as unknown as FsRequestMessage;
+			if (req?.v === FS_PROTOCOL_VERSION && req?.t === 'fs-req') requestVia = envelope.via;
 			if (req?.v === FS_PROTOCOL_VERSION && req?.t === 'fs-req') {
 				hoster.postMessage({
 					v: FS_PROTOCOL_VERSION,
@@ -303,6 +333,7 @@ test('separate dedicated session: hello/ready and fs1 tree on the assigned chann
 			tree.map((entry) => entry.path),
 			['separate.txt']
 		);
+		assert.equal(requestVia, 'bc-hoster');
 	} finally {
 		client?.close();
 		runtime.transport.close();

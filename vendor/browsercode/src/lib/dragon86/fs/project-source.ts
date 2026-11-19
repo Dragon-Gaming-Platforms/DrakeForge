@@ -25,6 +25,7 @@ export interface Dragon86SourceOptions {
 	remote: RemoteFs;
 	podAttachment?: PodAttachment;
 	onRemoteLive?: () => void;
+	onRemoteUnavailable?: (message: string) => void;
 	onStatus?: (text: string, level?: 'info' | 'warn' | 'error') => void;
 	onIssues?: (issues: SyncIssue[]) => void;
 	onSyncController?: (controller: SyncController | null) => void;
@@ -51,16 +52,16 @@ export function dragon86ProjectSource(options: Dragon86SourceOptions): ProjectSo
 		listFiles: async (): Promise<string[]> => {
 			try {
 				initialEntries = await remote.tree();
-				const snapshot = snapshotOf(initialEntries);
-				hasPackageJson = snapshot.files.includes('package.json');
-				options.onRemoteLive?.();
-				status(`Found ${snapshot.files.length} remote files`);
-				return snapshot.files;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				status(`Remote filesystem is not answering yet: ${message}`, 'warn');
-				return [];
+				options.onRemoteUnavailable?.(message);
+				status(`Dragon86 filesystem is disconnected: ${message}`, 'error');
+				throw new Error(`Could not read Dragon86 filesystem: ${message}`);
 			}
+			const snapshot = snapshotOf(initialEntries);
+			hasPackageJson = snapshot.files.includes('package.json');
+			status(`Found ${snapshot.files.length} remote files; hydrating Dragon86 workspace`);
+			return snapshot.files;
 		},
 
 		hydrate: async (ctx: BootContext, files: string[]): Promise<void> => {
@@ -74,9 +75,13 @@ export function dragon86ProjectSource(options: Dragon86SourceOptions): ProjectSo
 						const bytes = await remote.read(rel);
 						await ctx.fs.writeBinaryFile(`${ctx.workdir}/${rel}`, toBuffer(bytes));
 					} catch (error) {
-						console.warn('[drakeforge] failed to hydrate', file, error);
+						const message = error instanceof Error ? error.message : String(error);
+						options.onRemoteUnavailable?.(message);
+						status(`Could not mount Dragon86 file ${file}: ${message}`, 'error');
+						throw new Error(`Could not mount Dragon86 file ${file}: ${message}`);
 					}
 				}
+				status('Dragon86 files hydrated; validating the connected filesystem');
 			} finally {
 				synced?.endHydrate();
 			}
@@ -88,7 +93,9 @@ export function dragon86ProjectSource(options: Dragon86SourceOptions): ProjectSo
 				await synced?.initialize();
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				status(`Could not snapshot the workspace for sync: ${message}`, 'error');
+				options.onRemoteUnavailable?.(message);
+				status(`Could not mount Dragon86 filesystem for sync: ${message}`, 'error');
+				throw error;
 			}
 			synced?.start();
 		},
@@ -125,7 +132,9 @@ export function dragon86ProjectSource(options: Dragon86SourceOptions): ProjectSo
 		wrapFs: (podFs: WorkspaceFs): WorkspaceFs => {
 			synced = new SyncedWorkspaceFs(podFs, remote, DRAGON86_WORKDIR, {
 				onStatus: (text, level) => status(text, level ?? 'info'),
-				onIssues: (issues) => options.onIssues?.(issues)
+				onIssues: (issues) => options.onIssues?.(issues),
+				onRemoteLive: options.onRemoteLive,
+				onRemoteUnavailable: options.onRemoteUnavailable
 			});
 			options.onSyncController?.(synced);
 			return synced;

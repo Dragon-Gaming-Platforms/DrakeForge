@@ -1,5 +1,10 @@
 /** Typed fs1 request/response client — adapted from Cheerpx-Bridge src/fs/fsClient.ts. */
-import { FS_PROTOCOL_VERSION, FS_REQUEST_TIMEOUT_MS } from './config';
+import {
+	FS_MAX_BYTES,
+	FS_MAX_TREE_ENTRIES,
+	FS_PROTOCOL_VERSION,
+	FS_REQUEST_TIMEOUT_MS
+} from './config';
 import type {
 	FsEntry,
 	FsOp,
@@ -41,6 +46,9 @@ export class FsClient {
 		opts: { path?: string; to?: string; data?: Uint8Array } = {}
 	): Promise<FsResponseMessage> {
 		if (this.closed) throw new FsError('ECLOSED');
+		if (opts.data && opts.data.byteLength > FS_MAX_BYTES) {
+			throw new FsError(`EFBIG: fs1 messages are limited to ${FS_MAX_BYTES} bytes`);
+		}
 		const id = this.salt + ++this.counter;
 		const msg: FsRequestMessage = { v: FS_PROTOCOL_VERSION, t: 'fs-req', id, op };
 		if (opts.path !== undefined) msg.path = opts.path;
@@ -57,10 +65,18 @@ export class FsClient {
 	}
 
 	async list(path: string): Promise<FsEntry[]> {
-		return (await this.request('list', { path })).entries ?? [];
+		const entries = (await this.request('list', { path })).entries ?? [];
+		if (entries.length > FS_MAX_TREE_ENTRIES) {
+			throw new FsError(`EFBIG: directory exceeds ${FS_MAX_TREE_ENTRIES} entries`);
+		}
+		return entries;
 	}
 	async tree(path = '/'): Promise<FsTreeEntry[]> {
-		return (await this.request('tree', { path })).tree ?? [];
+		const entries = (await this.request('tree', { path })).tree ?? [];
+		if (entries.length > FS_MAX_TREE_ENTRIES) {
+			throw new FsError(`EFBIG: tree exceeds ${FS_MAX_TREE_ENTRIES} entries`);
+		}
+		return entries;
 	}
 	async read(path: string): Promise<Uint8Array> {
 		const res = await this.request('read', { path });

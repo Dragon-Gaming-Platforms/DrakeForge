@@ -17,6 +17,8 @@ import {
 	ALLOWED_PARENT_ORIGINS,
 	ALLOWED_PARENT_ORIGIN_PATTERNS,
 	ALLOW_LOCALHOST_PARENTS,
+	FS_MAX_BYTES,
+	FS_MAX_TREE_ENTRIES,
 	FS_PROTOCOL_VERSION,
 	PROTOCOL_VERSION
 } from './config';
@@ -158,7 +160,7 @@ function parseStatLike(raw: unknown): FsStat | null {
 }
 
 function parseEntries(raw: unknown): FsEntry[] | null {
-	if (!Array.isArray(raw)) return null;
+	if (!Array.isArray(raw) || raw.length > FS_MAX_TREE_ENTRIES) return null;
 	const out: FsEntry[] = [];
 	for (const item of raw) {
 		if (typeof item !== 'object' || item === null) return null;
@@ -171,7 +173,7 @@ function parseEntries(raw: unknown): FsEntry[] | null {
 }
 
 function parseTree(raw: unknown): FsTreeEntry[] | null {
-	if (!Array.isArray(raw)) return null;
+	if (!Array.isArray(raw) || raw.length > FS_MAX_TREE_ENTRIES) return null;
 	const out: FsTreeEntry[] = [];
 	for (const item of raw) {
 		if (typeof item !== 'object' || item === null) return null;
@@ -217,7 +219,7 @@ export function parseFsResponse(raw: unknown): FsResponseMessage | null {
 	}
 	if (msg.data !== undefined) {
 		const data = asUint8Array(msg.data);
-		if (data === null) return null;
+		if (data === null || data.byteLength > FS_MAX_BYTES) return null;
 		res.data = data;
 	}
 	if (msg.stat !== undefined) {
@@ -262,7 +264,7 @@ export function parseFsRequest(raw: unknown): FsRequestMessage | null {
 	}
 	if (msg.data !== undefined) {
 		const data = asUint8Array(msg.data);
-		if (data === null) return null;
+		if (data === null || data.byteLength > FS_MAX_BYTES) return null;
 		req.data = data;
 	}
 	return req;
