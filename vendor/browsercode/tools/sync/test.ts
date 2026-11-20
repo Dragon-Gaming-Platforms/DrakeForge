@@ -120,6 +120,8 @@ class FakeRemoteFs implements RemoteFs {
 	readonly dirs = new Set<string>();
 	failWrite = false;
 	failTree = false;
+	failRead = false;
+	readCount = 0;
 	private version = 0;
 
 	private bump(): number {
@@ -140,6 +142,8 @@ class FakeRemoteFs implements RemoteFs {
 		return entries.sort((a, b) => a.path.localeCompare(b.path));
 	}
 	async read(rel: string): Promise<Uint8Array> {
+		this.readCount++;
+		if (this.failRead) throw new Error('remote read failed');
 		const data = this.files.get(rel);
 		if (!data) throw new Error(`ENOENT: ${rel}`);
 		return copy(data);
@@ -293,6 +297,119 @@ test('remote poll failure is surfaced instead of silently dropping sync', async 
 		remote.failTree = false;
 		await synced.syncFromRemote();
 		assert.equal(issues().filter((issue) => issue.id === 'remote-sync-failed:workspace').length, 0);
+	} finally {
+		synced.stop();
+	}
+});
+
+test('failed conflict resolution keeps a visible write-failed issue across a poll cycle', async () => {
+	const pod = new MemoryPodFs();
+	const remote = new FakeRemoteFs();
+	let issues: SyncIssue[] = [];
+	await remote.write('shared.txt', bytes('base'));
+	await pod.writeFile(`${WORKDIR}/shared.txt`, 'base');
+	const synced = new SyncedWorkspaceFs(pod, remote, WORKDIR, {
+		onIssues: (next) => (issues = next)
+	});
+	try {
+		await synced.initialize();
+		await remote.write('shared.txt', bytes('Dragon86 edit'));
+		await pod.writeFile(`${WORKDIR}/shared.txt`, 'terminal edit');
+		await synced.syncFromRemote();
+		const conflict = issues.find((issue) => issue.kind === 'conflict');
+		assert.ok(conflict, 'expected a conflict');
+
+		// Resolution push fails (remote still broken for writes).
+		remote.failWrite = true;
+		await synced.resolve(conflict.id, 'local');
+		assert.ok(
+			issues.some((issue) => issue.kind === 'remote-write-failed'),
+			'failed resolve must surface remote-write-failed'
+		);
+
+		// A later poll must not GC that failure while it is still pending retry.
+		await synced.syncFromRemote();
+		assert.ok(
+			issues.some((issue) => issue.kind === 'remote-write-failed'),
+			'remote-write-failed must survive endIssueCycle while pending.failed'
+		);
+
+		// Recovery clears it.
+		remote.failWrite = false;
+		await synced.syncFromRemote();
+		assert.equal(
+			issues.filter((issue) => issue.kind === 'remote-write-failed').length,
+			0,
+			'recovered write failure should clear'
+		);
+	} finally {
+		synced.stop();
+	}
+});
+
+test('unknown remote content (read failure) does not invent a conflict or pull', async () => {
+	const pod = new MemoryPodFs();
+	const remote = new FakeRemoteFs();
+	let issues: SyncIssue[] = [];
+	await remote.write('flaky.txt', bytes('base'));
+	await pod.writeFile(`${WORKDIR}/flaky.txt`, 'base');
+	const synced = new SyncedWorkspaceFs(pod, remote, WORKDIR, {
+		onIssues: (next) => (issues = next)
+	});
+	try {
+		await synced.initialize();
+
+		// Remote stat changes but read fails → hash unknown → no conflict, no overwrite.
+		await remote.write('flaky.txt', bytes('remote new'));
+		remote.failRead = true;
+		await pod.writeFile(`${WORKDIR}/flaky.txt`, 'local new');
+		await synced.syncFromRemote();
+
+		assert.equal(
+			await pod.readFile(`${WORKDIR}/flaky.txt`),
+			'local new',
+			'local must not be overwritten'
+		);
+		assert.ok(
+			!issues.some((issue) => issue.kind === 'conflict'),
+			'read failure must not invent a conflict'
+		);
+		assert.ok(
+			issues.some((issue) => issue.kind === 'remote-sync-failed'),
+			'read failure should surface remote-sync-failed'
+		);
+
+		// Once reads work: remote was never overwritten, and the real divergence becomes a conflict.
+		remote.failRead = false;
+		await synced.syncFromRemote();
+		assert.equal(
+			text(await remote.read('flaky.txt')),
+			'remote new',
+			'remote must not be overwritten'
+		);
+		assert.equal(
+			await pod.readFile(`${WORKDIR}/flaky.txt`),
+			'local new',
+			'local must not be overwritten'
+		);
+		assert.ok(
+			issues.some((issue) => issue.kind === 'conflict'),
+			'after recovery, divergent edits become a conflict'
+		);
+	} finally {
+		synced.stop();
+	}
+});
+
+test('unchanged remote files are not re-read on refresh (incremental hash)', async () => {
+	const { remote, synced } = await setup();
+	try {
+		await remote.write('stable.txt', bytes('same'));
+		await synced.syncFromRemote();
+		const readsBefore = remote.readCount;
+		// No stat change → refreshBaselines must not re-read content.
+		await synced.syncFromRemote();
+		assert.equal(remote.readCount, readsBefore, 'stable files must not be re-hashed every poll');
 	} finally {
 		synced.stop();
 	}

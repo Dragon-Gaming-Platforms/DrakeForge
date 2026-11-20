@@ -13,8 +13,9 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  # PRs and branch pushes get their own group so they do not queue behind Pages deploys.
+  group: ${{ github.event_name == 'pull_request' && format('ci-{0}', github.ref) || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -35,6 +36,9 @@ jobs:
           PAGES_BASE: /DrakeForge
           NODE_OPTIONS: --max-old-space-size=4096
         run: npm run check
+      - name: Lint (Prettier + ESLint)
+        working-directory: vendor/browsercode
+        run: npm run lint
       - name: Run 9p, session, fs1, sync, launcher, and OpenRouter tests
         working-directory: vendor/browsercode
         run: npm run test

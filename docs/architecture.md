@@ -88,6 +88,8 @@ State per path: remote stat/hash baseline, local content-hash baseline, pending 
 
 The sync layer ignores paths outside the IDE workdir (for example BrowserPod's `.bp_rc`) and filters conflict artifacts from scans/snapshots. This is whole-file eventual consistency, not byte-range POSIX semantics.
 
+Conflict copies are named `<file>.drakeforge-remote-<timestamp>` next to the original. They are **local BrowserPod artifacts only** — never pushed to Dragon86, never part of the remote tree. They are safe to delete once the conflict is resolved. The Git panel's Stage action excludes `*.drakeforge-remote-*` so they are not committed by accident; add the same pattern to a project `.gitignore` if you use git inside the pod.
+
 ## Standalone 9p worker
 
 `WorkerP9Transport` posts exact 9p frames to a module Worker. The Worker configures ZenFS (`/home` on IndexedDB, `/tmp` in memory), seeds a default project if empty, and calls Dragon86's `createP9Handler(root)`. Each response is copied into a transferable `ArrayBuffer`. `P9Client` implements the 9p2000.L subset needed by `P9RemoteFs`: `Tversion`, `Tattach`, `Twalk`, `Tlopen`, `Tlcreate`, `Tread`, `Twrite`, `Treaddir`, `Tgetattr`, `Tmkdir`, `Tunlinkat`, `Trenameat`, and `Tclunk`, plus `Rlerror` handling. Recursive removal is done with repeated `Tunlinkat` calls, including `AT_REMOVEDIR` for directories.
@@ -111,6 +113,8 @@ The layout is modeled on VS Code and Dragon86's real `src/styles/theme.css` / `s
 The **Agents** activity view is inline: `AgentsPanel.svelte` constructs an `AgentSession` and renders `AgentShell` in the side bar. `src/lib/agents/session.svelte.ts` gained an optional `onRestart` hook so changing a credential relaunches only that inline CLI session instead of reloading the whole workspace tab. `GitPanel.svelte` runs real git commands in the Output terminal. The bottom panel has VS Code-style Problems/Output/Debug Console/**Sync**/Terminal/Ports tabs; the Sync tab lists failed writes, poll errors, and conflicts with **Use BrowserPod copy** / **Use Dragon86 copy** buttons. The terminal stays mounted and spans the full workspace width. See `docs/link-to-dragon86.md` for the connection explanation.
 
 ## Agent API credentials
+
+Credentials (Codex OpenAI key, OpenRouter key) are stored in this browser's `localStorage` under `codex-api-key` / `openrouter-api-key`. They are never written to `.env`, never committed, and never sent anywhere except to the provider when that CLI launches. On a shared machine, use the key button in the agent terminal to clear/replace a saved key, or clear site data for the Pages origin.
 
 `src/lib/config/tools.ts` declares an optional `CredentialSpec` per CLI. `CredentialGate` blocks the boot until a secret is present, `CredentialCard` lets the user paste it, and `bootCLI` injects `config.env()` into the CLI process at launch. Codex uses this for `OPENAI_API_KEY`; the new **OpenRouter** option uses the same mechanism for `OPENROUTER_API_KEY`.
 

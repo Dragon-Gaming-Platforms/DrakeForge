@@ -53,7 +53,12 @@ export const ALLOWED_PARENT_ORIGIN_PATTERNS: readonly RegExp[] = [
 	/^https:\/\/\d+-[a-z0-9-]+\.e2b\.app$/
 ];
 
-export const ALLOW_LOCALHOST_PARENTS = true;
+/**
+ * Localhost parents are for local dev only. Production Pages embeds must be
+ * driven by an allowlisted origin (Dragon86 or an Arena preview), not any
+ * page that happens to be served from 127.0.0.1.
+ */
+export const ALLOW_LOCALHOST_PARENTS = import.meta.env?.DEV === true;
 
 /** Cheerpx-Bridge batches engine output on this cadence. */
 export const FLUSH_INTERVAL_MS = 16;

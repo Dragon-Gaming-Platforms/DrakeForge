@@ -22,6 +22,7 @@ export class CredentialGate {
 	changeOpen = $state(false);
 
 	private resolveSignIn: ((value: string) => void) | null = null;
+	private rejectSignIn: ((error: Error) => void) | null = null;
 
 	constructor(
 		private credential: CredentialSpec,
@@ -40,12 +41,23 @@ export class CredentialGate {
 
 	/**
 	 * Blocks the launch until a secret is stored, rather than overlaying a CLI already running
-	 * without one, which could not be handed it afterwards.
+	 * without one, which could not be handed it afterwards. Rejects if the overlay is cancelled
+	 * so bootCLI fails visibly instead of hanging under a spinner forever.
 	 */
 	beforeLaunch = async (): Promise<void> => {
 		if (!this.credential.get()) {
 			this.stage = 'signin';
-			this.credential.set(await new Promise<string>((resolve) => (this.resolveSignIn = resolve)));
+			try {
+				this.credential.set(
+					await new Promise<string>((resolve, reject) => {
+						this.resolveSignIn = resolve;
+						this.rejectSignIn = reject;
+					})
+				);
+			} finally {
+				this.resolveSignIn = null;
+				this.rejectSignIn = null;
+			}
 			this.hasCredential = true;
 		}
 		this.stage = 'idle';
@@ -53,6 +65,14 @@ export class CredentialGate {
 
 	submit = (value: string): void => {
 		this.resolveSignIn?.(value);
+	};
+
+	/** Abandon a pending sign-in so `beforeLaunch` settles (boot fails with this error). */
+	cancelSignIn = (message = 'Sign-in cancelled before the CLI could start.'): void => {
+		this.rejectSignIn?.(new Error(message));
+		this.rejectSignIn = null;
+		this.resolveSignIn = null;
+		this.stage = 'idle';
 	};
 
 	saveAndRestart = (value: string): void => {

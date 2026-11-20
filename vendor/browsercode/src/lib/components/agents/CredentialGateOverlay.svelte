@@ -26,7 +26,16 @@
 	{:else if gate.stage === 'error'}
 		<AgentErrorCard {tool} message={gate.error} onRetry={onRestart} {onCancel} />
 	{:else if gate.stage === 'signin'}
-		<CredentialCard {tool} {credential} mode="boot" onSubmit={gate.submit} {onCancel} />
+		<CredentialCard
+			{tool}
+			{credential}
+			mode="boot"
+			onSubmit={gate.submit}
+			onCancel={() => {
+				gate.cancelSignIn();
+				onCancel?.();
+			}}
+		/>
 	{:else}
 		<CredentialCard
 			{tool}

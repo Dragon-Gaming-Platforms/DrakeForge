@@ -169,9 +169,9 @@ No response headers were broadened to unrelated pages, and no unrelated Dragon86
 | `Invalid Dragon86 session channel`    | `channel` is not exactly `dragon86-drakeforge-<uuid>`; no fallback transport is opened.     |
 | `ready` never arrives                 | BrowserPod API key missing/origin-restricted, or COI serviceworker did not reload the page. |
 | `fs1` tree empty or timing out        | Wrong `?root=`, Dragon86 not on a same-origin Pages URL, or the remote tree exceeds caps.   |
-| Sync conflict in the status bar       | Both Dragon86 and BrowserPod edited the same path; resolve explicitly in the Sync panel.    |
+| Sync conflict in the status bar       | Both sides edited the same path; resolve in the Sync panel. A `*.drakeforge-remote-*` file is a local backup of the Dragon86 side — safe to delete after resolving, excluded from Stage. |
 | Failed remote write                   | Local copy is kept, an error is shown, and the write is retried on the next poll.           |
 | Standalone worker fails               | IndexedDB unavailable, or the 9p Worker bundle was not rebuilt.                             |
 | Launcher opens a broken/sandboxed tab | It was opened from the Files HTML preview; launch the `.d86` as an app shortcut instead.    |
 | Agent CLI opens a tab                 | Only OAuth sign-in should do that; the CLI itself runs inline.                              |
-| OpenRouter has no available model     | Paste/replace the OpenRouter key with the key button; the session restarts inline.          |
+| OpenRouter has no available model     | Paste/replace the key (stored in this browser's `localStorage` as `openrouter-api-key`, never on a server); the session restarts inline. |
