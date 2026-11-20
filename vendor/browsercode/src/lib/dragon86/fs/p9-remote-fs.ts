@@ -17,15 +17,32 @@ export class P9RemoteFs implements RemoteFs {
 
 	async tree(): Promise<RemoteEntry[]> {
 		const entries: RemoteEntry[] = [];
+		// readdir dirents already carry isDir; only files need a stat for size/mtime.
+		// File stats run in batches per directory so a large tree is not N sequential RTTs.
 		const walk = async (dir: string, relative: string): Promise<void> => {
 			if (entries.length >= MAX_TREE_ENTRIES) return;
-			for (const child of await this.client.readdir(dir)) {
+			const children = await this.client.readdir(dir);
+			const fileBatch: Array<{ path: string; absolute: string }> = [];
+			for (const child of children) {
 				if (entries.length >= MAX_TREE_ENTRIES) return;
 				const path = relative ? `${relative}/${child.name}` : child.name;
 				const absolute = dir === '/' ? `/${child.name}` : `${dir}/${child.name}`;
-				const stat = await this.client.stat(absolute);
-				entries.push({ path, ...stat });
-				if (stat.isDir) await walk(absolute, path);
+				if (child.isDir) {
+					// Directory mtime is unused for content sync; presence in the tree is.
+					entries.push({ path, isDir: true, size: 0, mtime: 0 });
+					await walk(absolute, path);
+				} else {
+					fileBatch.push({ path, absolute });
+				}
+			}
+			if (fileBatch.length > 0) {
+				const stats = await Promise.all(
+					fileBatch.map(async ({ path, absolute }) => {
+						const stat = await this.client.stat(absolute);
+						return { path, ...stat };
+					})
+				);
+				entries.push(...stats);
 			}
 		};
 		await walk('/', '');

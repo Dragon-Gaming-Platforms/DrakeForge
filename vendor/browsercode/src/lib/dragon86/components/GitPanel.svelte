@@ -6,8 +6,9 @@
 
 	let message = $state('Update from DrakeForge');
 	let busy = $state(false);
-
-	let branch = $derived(session.source.repo?.ref ?? 'main');
+	/** From `git status --porcelain` / `git branch --show-current`, not hardcoded. */
+	let branch = $state('…');
+	let statusLines = $state<string[]>([]);
 	let repoLabel = $derived(session.source.repo?.url ?? 'Dragon86 workspace');
 	let dirtyFiles = $derived(
 		session.openFiles.filter((file) => file.content !== file.savedContent).map((file) => file.path)
@@ -23,10 +24,33 @@
 		}
 	}
 
+	async function refreshStatus(): Promise<void> {
+		if (busy || !session.fsReady) return;
+		busy = true;
+		try {
+			const out = await session.runGitCapture(['status', '--porcelain']);
+			statusLines = out
+				.split('\n')
+				.map((line) => line.trimEnd())
+				.filter(Boolean);
+			const branchOut = (await session.runGitCapture(['branch', '--show-current'])).trim();
+			branch = branchOut || '(detached)';
+		} catch {
+			statusLines = [];
+			branch = session.source.repo?.ref ?? '…';
+		} finally {
+			busy = false;
+		}
+	}
+
 	function commit(): void {
 		const text = message.trim() || 'Update from DrakeForge';
 		void run(['commit', '-m', text]);
 	}
+
+	$effect(() => {
+		if (session.fsReady) void refreshStatus();
+	});
 </script>
 
 <div class="df-git-view">
@@ -40,18 +64,18 @@
 	</div>
 
 	<div class="df-card df-git-card">
-		<div class="df-heading df-git-label">Unsaved buffers</div>
-		{#if dirtyFiles.length === 0}
-			<div class="df-git-empty">No unsaved editor tabs.</div>
+		<div class="df-heading df-git-label">Working tree</div>
+		{#if statusLines.length === 0}
+			<div class="df-git-empty">Clean (no git status entries).</div>
 		{:else}
 			<ul class="df-git-list">
-				{#each dirtyFiles as file (file)}
-					<li class="df-mono">
-						<Icon icon="mingcute:edit-line" width="11" height="11" />
-						<span>{file}</span>
-					</li>
+				{#each statusLines as line (line)}
+					<li class="df-mono" title={line}><span>{line}</span></li>
 				{/each}
 			</ul>
+		{/if}
+		{#if dirtyFiles.length > 0}
+			<p class="df-git-note">Unsaved editor buffers: {dirtyFiles.join(', ')}</p>
 		{/if}
 	</div>
 
@@ -66,7 +90,14 @@
 	</label>
 
 	<div class="df-git-actions">
-		<button class="df-btn" disabled={busy || !session.fsReady} onclick={() => run(['status'])}>
+		<button
+			class="df-btn"
+			disabled={busy || !session.fsReady}
+			onclick={() => {
+				void run(['status']);
+				void refreshStatus();
+			}}
+		>
 			<Icon icon="mingcute:information-line" width="12" height="12" /> Status
 		</button>
 		<button
@@ -76,7 +107,12 @@
 		>
 			<Icon icon="mingcute:history-line" width="12" height="12" /> Log
 		</button>
-		<button class="df-btn" disabled={busy || !session.fsReady} onclick={() => run(['add', '.'])}>
+		<button
+			class="df-btn"
+			disabled={busy || !session.fsReady}
+			title="Stage all changes except .drakeforge-remote-* conflict copies"
+			onclick={() => run(['add', '.', ':(exclude)*.drakeforge-remote-*'])}
+		>
 			<Icon icon="mingcute:add-line" width="12" height="12" /> Stage
 		</button>
 		<button class="df-btn" disabled={busy || !session.fsReady} onclick={commit}>

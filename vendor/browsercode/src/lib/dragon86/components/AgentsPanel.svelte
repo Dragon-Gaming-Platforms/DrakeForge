@@ -30,16 +30,22 @@
 	let available = toolItems.filter((item) => !item.disabled);
 	let tool = $state<ToolId>(untrack(() => resolveToolId(initialTool)));
 	let generation = $state(0);
-	let session = $derived(
-		new AgentSession(tool, {
-			leaveGuard: false,
-			onRestart: () => generation++
-		})
-	);
 
 	function selectTool(id: ToolId): void {
 		tool = id;
 		generation++;
+	}
+
+	/** New session only when the {#key} below changes; AgentShell cleanup shuts the old one down. */
+	function makeSession(id: ToolId): AgentSession {
+		return new AgentSession(id, {
+			leaveGuard: false,
+			onRestart: () => generation++,
+			// Inline switch: same as the sidebar buttons, no full-page bounce through /agents.
+			onSwitchTool: (next) => selectTool(next),
+			// Embedded panel has nowhere to "leave" to; stay on the workspace.
+			onLeave: () => undefined
+		});
 	}
 </script>
 
@@ -73,10 +79,11 @@
 	{/if}
 
 	<div class="df-agent-terminal df-card">
-		{#if session.lock === 'taken'}
-			<DuplicateTabDialog />
-		{/if}
 		{#key `${tool}:${generation}`}
+			{@const session = makeSession(tool)}
+			{#if session.lock === 'taken'}
+				<DuplicateTabDialog />
+			{/if}
 			<AgentShell {session} shell={EMBEDDED_AGENT_SHELL} />
 		{/key}
 	</div>

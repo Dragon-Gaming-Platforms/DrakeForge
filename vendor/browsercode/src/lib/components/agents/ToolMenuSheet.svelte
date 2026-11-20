@@ -3,6 +3,7 @@
 	import ToolIcon from '$lib/components/ToolIcon.svelte';
 	import { toolItems, type ToolId } from '$lib/config/tools';
 	import { navigateWithLeaveGuard } from '$lib/stores/leaveWarning.svelte';
+	import { appHref } from '$lib/utils/paths';
 
 	type Props = {
 		activeId: ToolId;
@@ -79,13 +80,13 @@
 		{/each}
 		<div class="my-2 h-px bg-bc-tint/6"></div>
 		<button
-			onclick={() => navigateWithLeaveGuard('/ide', true)}
+			onclick={() => navigateWithLeaveGuard(appHref('/'), true)}
 			class="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-bc-text-muted transition-colors hover:bg-bc-tint/5 hover:text-bc-text"
 		>
 			<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-bc-tint/5">
 				<Icon icon="mingcute:code-line" width="18" height="18" />
 			</div>
-			<span class="flex-1 text-[14px] font-medium">Open Playground IDE</span>
+			<span class="flex-1 text-[14px] font-medium">Open workspace files</span>
 			<Icon icon="mingcute:arrow-right-line" width="16" height="16" class="text-bc-icon" />
 		</button>
 	</div>

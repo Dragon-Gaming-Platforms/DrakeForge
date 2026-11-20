@@ -129,6 +129,31 @@ export class PodRuntime implements IdeRuntime {
 		await this.runInOutput('git', args, { cwd: this.source.workdir });
 	}
 
+	/** Capture git stdout for the Source Control panel (branch, porcelain status). */
+	async runGitCapture(args: string[]): Promise<string> {
+		if (!this.pod) throw new Error('Pod is not ready yet');
+		const chunks: Uint8Array[] = [];
+		const terminal = await this.pod.createCustomTerminal({
+			onOutput: (chunk) => chunks.push(new Uint8Array(chunk))
+		});
+		// Shell-escape args so a crafted branch name cannot inject commands.
+		const quoted = args.map((arg) => `'${arg.replace(/'/g, `'\\''`)}'`).join(' ');
+		const exitCode = (await this.pod.run('bash', ['-c', `git ${quoted}`], {
+			echo: false,
+			terminal,
+			cwd: this.source.workdir
+		})) as unknown as number;
+		if (exitCode !== 0) throw new Error(`git ${args[0]} failed (exit code ${exitCode})`);
+		const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+		const bytes = new Uint8Array(total);
+		let offset = 0;
+		for (const chunk of chunks) {
+			bytes.set(chunk, offset);
+			offset += chunk.byteLength;
+		}
+		return new TextDecoder().decode(bytes);
+	}
+
 	shutdown(): void {
 		if (this.pod) void shutdownPod(this.pod);
 	}

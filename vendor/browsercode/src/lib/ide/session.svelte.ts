@@ -414,6 +414,12 @@ export class IdeSession {
 		await this.runtime.runGit?.(args);
 	}
 
+	/** Capture git stdout for panel status/branch without only echoing to Output. */
+	async runGitCapture(args: string[]): Promise<string> {
+		if (!this.fsReady) throw new Error('Project files are not ready yet');
+		return (await this.runtime.runGitCapture?.(args)) ?? '';
+	}
+
 	/** Tears down the runtime and cancels any in-flight boot. */
 	shutdown(): void {
 		this.unmounted = true;

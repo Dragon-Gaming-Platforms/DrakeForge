@@ -13,6 +13,7 @@ import {
 	markIntentionalNavigation,
 	navigateWithLeaveGuard
 } from '$lib/stores/leaveWarning.svelte';
+import { appHref } from '$lib/utils/paths';
 import { requestSingleTabLock } from '$lib/utils/tabLock';
 import { bootCLI } from './boot';
 import { CredentialGate } from './credential-gate.svelte';
@@ -24,6 +25,13 @@ export type AgentSessionOptions = {
 	leaveGuard?: boolean;
 	/** Embedded hosts can relaunch the CLI without reloading the whole workspace tab. */
 	onRestart?: () => void;
+	/**
+	 * Inline tool switch (Agents activity). When set, `switchTo` calls this instead of
+	 * navigating to `/agents/[tool]`, which only redirects back into the workspace.
+	 */
+	onSwitchTool?: (id: ToolId) => void;
+	/** When set, `leave` calls this instead of navigating away (embedded panels). */
+	onLeave?: () => void;
 };
 
 /** Owns one agent CLI session. */
@@ -41,10 +49,14 @@ export class AgentSession {
 
 	private readonly leaveGuard: boolean;
 	private readonly onRestart: (() => void) | undefined;
+	private readonly onSwitchTool: ((id: ToolId) => void) | undefined;
+	private readonly onLeave: (() => void) | undefined;
 
 	constructor(requestedTool: string | undefined, options: AgentSessionOptions = {}) {
 		this.leaveGuard = options.leaveGuard ?? true;
 		this.onRestart = options.onRestart;
+		this.onSwitchTool = options.onSwitchTool;
+		this.onLeave = options.onLeave;
 		this.id = resolveToolId(requestedTool);
 		// resolveToolId only ever returns an id that is in toolItems, so this always resolves.
 		this.tool = toolItems.find((item) => item.id === this.id)!;
@@ -100,11 +112,23 @@ export class AgentSession {
 
 	/** Always confirms: there is a live session here to tear down. */
 	switchTo = (id: string): void => {
-		if (isEnabledTool(id)) navigateWithLeaveGuard(`/agents/${id}`, true);
+		if (!isEnabledTool(id)) return;
+		if (this.onSwitchTool) {
+			this.onSwitchTool(id);
+			return;
+		}
+		// Full page only when there is no inline host; `/agents/[tool]` would just bounce here.
+		navigateWithLeaveGuard(appHref(`/?agent=${encodeURIComponent(id)}`), true);
 	};
 
-	/** No confirmation, unlike `switchTo` */
-	leave = (): void => navigateWithLeaveGuard('/agents', false);
+	/** No confirmation, unlike `switchTo`. Embedded hosts supply `onLeave` to stay put. */
+	leave = (): void => {
+		if (this.onLeave) {
+			this.onLeave();
+			return;
+		}
+		navigateWithLeaveGuard(appHref('/'), false);
+	};
 
 	shutdown(): void {
 		this.disposeLeaveGuard();

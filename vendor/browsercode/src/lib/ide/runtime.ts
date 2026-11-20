@@ -63,6 +63,8 @@ export interface IdeRuntime {
 	run?(): Promise<void>;
 	/** Optional: echo and run a git command in the Output terminal (pod runtimes only). */
 	runGit?(args: string[]): Promise<void>;
+	/** Optional: run git and return stdout for UI status (pod runtimes only). */
+	runGitCapture?(args: string[]): Promise<string>;
 	/** Attaches an interactive shell to `el`; absent on runtimes without one. */
 	startBash?(el: HTMLElement): Promise<void>;
 	/** Tears the machine down; safe to call before or during `boot`. */

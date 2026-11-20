@@ -45,16 +45,11 @@ export async function bootCLI(
 			const rawUrl = portal?.url;
 			const url = typeof rawUrl === 'string' ? rawUrl.trim() : '';
 
-			if (!Number.isInteger(port) || port <= 0) {
-				console.log('[portal] update', portal);
-				return;
-			}
+			if (!Number.isInteger(port) || port <= 0) return;
 
 			if (url.length > 0) {
-				console.log(`[portal] active port=${port} url=${url}`);
 				onPortalUpdate?.({ port, url, active: true });
 			} else {
-				console.log(`[portal] removed port=${port}`);
 				onPortalUpdate?.({ port, url: null, active: false });
 			}
 		});

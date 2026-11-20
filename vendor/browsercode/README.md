@@ -1,3 +1,8 @@
+> **DrakeForge note:** This directory is a vendored fork of
+> [BrowserCode](https://github.com/leaningtech/browsercode) used by the DrakeForge Pages site.
+> For routes, Dragon86 connection, agents, and deployment, start at the
+> [repository root README](../../README.md) — this file still describes upstream BrowserCode.
+
 <a id="readme-top"></a>
 
 <div align="center">

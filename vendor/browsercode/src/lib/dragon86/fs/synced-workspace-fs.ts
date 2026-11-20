@@ -241,6 +241,7 @@ export class SyncedWorkspaceFs implements WorkspaceFs, SyncController {
 		try {
 			await this.remote.rename(fromRel, toRel);
 			this.pending.delete(fromRel);
+			this.clearIssue(issueId('remote-write-failed', fromRel));
 			await this.refreshBaselines();
 		} catch (error) {
 			this.markFailed(fromRel, error, 'rename', toRel);
@@ -256,6 +257,7 @@ export class SyncedWorkspaceFs implements WorkspaceFs, SyncController {
 		try {
 			await this.remote.remove(rel);
 			this.pending.delete(rel);
+			this.clearIssue(issueId('remote-write-failed', rel));
 			await this.refreshBaselines();
 		} catch (error) {
 			this.markFailed(rel, error, 'delete');
@@ -302,11 +304,16 @@ export class SyncedWorkspaceFs implements WorkspaceFs, SyncController {
 	}
 
 	private markFailed(rel: string, error: unknown, op: PendingOp, to?: string): void {
-		const pending = this.pending.get(rel);
+		let pending = this.pending.get(rel);
 		if (pending) {
 			pending.failed = true;
 			pending.op = op;
 			if (to !== undefined) pending.to = to;
+		} else {
+			// Ensure a failed op always has a pending entry so the next poll retries it and
+			// re-reports the issue; without this, endIssueCycle GCs a real failure after one cycle.
+			pending = { hash: 'failed', isDir: false, at: Date.now(), op, to, failed: true };
+			this.pending.set(rel, pending);
 		}
 		const message = error instanceof Error ? error.message : String(error);
 		this.reportIssue({
@@ -363,8 +370,8 @@ export class SyncedWorkspaceFs implements WorkspaceFs, SyncController {
 			const currentLocal = await this.scanLocal();
 			this.lastRemote = new Map(nextRemote);
 			this.lastLocal = new Map(currentLocal);
-			await this.reconcile(nextRemote, currentLocal);
-			await this.refreshBaselines();
+			const holdBaselines = await this.reconcile(nextRemote, currentLocal);
+			await this.refreshBaselines(holdBaselines);
 			this.hooks.onRemoteLive?.();
 			if (!this.announced) {
 				this.announced = true;
@@ -390,7 +397,7 @@ export class SyncedWorkspaceFs implements WorkspaceFs, SyncController {
 	private async reconcile(
 		nextRemote: Map<string, RemoteStat>,
 		currentLocal: Map<string, LocalSignature>
-	): Promise<void> {
+	): Promise<Set<string>> {
 		const paths = new Set<string>([
 			...nextRemote.keys(),
 			...currentLocal.keys(),
@@ -398,6 +405,8 @@ export class SyncedWorkspaceFs implements WorkspaceFs, SyncController {
 			...this.localBaseline.keys()
 		]);
 		const decisions: Decision[] = [];
+		// Paths skipped because remote bytes were unreadable: baselines must not advance.
+		const holdBaselines = new Set<string>();
 		for (const path of paths) {
 			if (isSyncArtifact(path)) continue;
 			const remoteStat = nextRemote.get(path);
@@ -406,14 +415,22 @@ export class SyncedWorkspaceFs implements WorkspaceFs, SyncController {
 			const baseLocal = this.localBaseline.get(path);
 			const remoteChanged = await this.remoteChanged(path, remoteStat, baseRemote);
 			const localChanged = this.localChanged(path, localSig, baseLocal);
+			// Stat moved but content could not be read: never push/delete over unknown bytes.
+			if (remoteChanged === 'unknown' && localChanged) {
+				holdBaselines.add(path);
+				continue;
+			}
+			const remoteIsChanged = remoteChanged === true;
 			let remoteHash: string | undefined;
 			let localHash: string | undefined;
-			if (remoteChanged && localChanged) {
-				remoteHash = await this.hashRemote(path, remoteStat);
+			if (remoteIsChanged && localChanged) {
+				remoteHash = (await this.hashRemote(path, remoteStat)) ?? undefined;
 				localHash = localSig?.hash ?? ABSENT;
+				// Unknown remote content: do not invent a conflict this cycle.
+				if (remoteHash === undefined) continue;
 				if (remoteHash === localHash) continue; // Both sides made the same edit.
 			}
-			if (remoteChanged && localChanged) {
+			if (remoteIsChanged && localChanged) {
 				decisions.push({
 					path,
 					action: 'conflict',
@@ -429,7 +446,7 @@ export class SyncedWorkspaceFs implements WorkspaceFs, SyncController {
 					remoteStat,
 					localSig
 				});
-			} else if (remoteChanged) {
+			} else if (remoteIsChanged) {
 				decisions.push({
 					path,
 					action: remoteStat ? 'pull' : 'delete-local',
@@ -474,16 +491,20 @@ export class SyncedWorkspaceFs implements WorkspaceFs, SyncController {
 		for (const d of decisions.filter((x) => x.action === 'conflict')) {
 			await this.reportConflict(d);
 		}
+		return holdBaselines;
 	}
 
+	/** `true`/`false` for known change state; `'unknown'` when content could not be read. */
 	private async remoteChanged(
 		path: string,
 		stat: RemoteStat | undefined,
 		base: RemoteStat | undefined
-	): Promise<boolean> {
+	): Promise<boolean | 'unknown'> {
 		if (stat === undefined || base === undefined) return stat !== undefined || base !== undefined;
 		if (!statChanged(base, stat)) return false;
 		const current = await this.hashRemote(path, stat);
+		// Unknown content: do not claim a change (and do not push over it). Issue already reported.
+		if (current === null) return 'unknown';
 		const previous = this.remoteHashBaseline.get(path);
 		return previous === undefined || current !== previous;
 	}
@@ -497,7 +518,8 @@ export class SyncedWorkspaceFs implements WorkspaceFs, SyncController {
 		return sig.hash !== base.hash;
 	}
 
-	private async hashRemote(path: string, stat: RemoteStat | undefined): Promise<string> {
+	/** Returns null when the remote read fails: unknown, not a content hash. */
+	private async hashRemote(path: string, stat: RemoteStat | undefined): Promise<string | null> {
 		if (!stat) return ABSENT;
 		if (stat.isDir) return 'dir';
 		try {
@@ -512,7 +534,7 @@ export class SyncedWorkspaceFs implements WorkspaceFs, SyncController {
 				message: `Could not read remote ${path}: ${message}`,
 				at: Date.now()
 			});
-			return `error:${message}`;
+			return null;
 		}
 	}
 
@@ -549,7 +571,8 @@ export class SyncedWorkspaceFs implements WorkspaceFs, SyncController {
 			await this.podFs.writeBinaryFile(this.abs(path), toArrayBuffer(bytes));
 		}
 		this.baseline.set(path, stat);
-		this.remoteHashBaseline.set(path, await this.hashRemote(path, stat));
+		const hash = await this.hashRemote(path, stat);
+		if (hash !== null) this.remoteHashBaseline.set(path, hash);
 	}
 
 	private async reportConflict(d: Decision): Promise<void> {
@@ -604,17 +627,80 @@ export class SyncedWorkspaceFs implements WorkspaceFs, SyncController {
 			);
 			this.emitIssues();
 		} catch (error) {
-			this.markFailed(path, error, 'write');
+			// Local strategy failures become a retried pending write. Remote-strategy
+			// failures are pulls: keep the conflict issue and surface pull-failed so the
+			// next cycle does not GC a real resolution error.
+			if (strategy === 'local') {
+				this.markFailed(path, error, 'write');
+			} else {
+				this.reportFailure('pull-failed', path, error, 'Failed to apply Dragon86 copy');
+			}
 		}
 	}
 
-	private async refreshBaselines(): Promise<void> {
+	/**
+	 * Rebuild baselines from a fresh tree + local scan.
+	 * `hold` paths (unreadable remote this cycle) keep their previous remote/local
+	 * baselines so the next poll retries the same change instead of treating it as synced.
+	 */
+	private async refreshBaselines(hold: ReadonlySet<string> = new Set()): Promise<void> {
 		const remoteEntries = await this.remote.tree();
 		const local = await this.scanLocal();
-		this.baseline = baselineOf(remoteEntries);
+		const nextRemote = baselineOf(remoteEntries);
+		// Only re-read files whose stat moved; unchanged files keep their content hash.
+		// Without this, every 2s poll and every IDE save re-downloads the whole tree.
+		const nextHashes = new Map<string, string>();
+		for (const entry of remoteEntries) {
+			if (entry.isDir) {
+				nextHashes.set(entry.path, 'dir');
+				continue;
+			}
+			if (hold.has(entry.path)) {
+				// Preserve previous remote stat+hash for unreadable paths (if any).
+				const prevStat = this.baseline.get(entry.path);
+				const prevHash = this.remoteHashBaseline.get(entry.path);
+				if (prevStat !== undefined) nextRemote.set(entry.path, prevStat);
+				if (prevHash !== undefined) nextHashes.set(entry.path, prevHash);
+				continue;
+			}
+			const prevStat = this.baseline.get(entry.path);
+			const prevHash = this.remoteHashBaseline.get(entry.path);
+			const nextStat = nextRemote.get(entry.path);
+			if (
+				prevHash !== undefined &&
+				prevStat !== undefined &&
+				nextStat !== undefined &&
+				!statChanged(prevStat, nextStat)
+			) {
+				nextHashes.set(entry.path, prevHash);
+				continue;
+			}
+			try {
+				nextHashes.set(entry.path, hashBytes(await this.remote.read(entry.path)));
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				// Do not advance the stat baseline past an unreadable file.
+				if (prevStat !== undefined) nextRemote.set(entry.path, prevStat);
+				if (prevHash !== undefined) nextHashes.set(entry.path, prevHash);
+				this.reportIssue({
+					id: issueId('remote-sync-failed', entry.path),
+					kind: 'remote-sync-failed',
+					level: 'error',
+					path: entry.path,
+					message: `Could not read remote ${entry.path}: ${message}`,
+					at: Date.now()
+				});
+			}
+		}
+		this.baseline = nextRemote;
 		this.lastRemote = new Map(this.baseline);
-		this.remoteHashBaseline = await this.readRemoteHashes(remoteEntries);
-		this.localBaseline = new Map(local);
+		this.remoteHashBaseline = nextHashes;
+		const nextLocalBaseline = new Map(local);
+		for (const path of hold) {
+			const prevLocal = this.localBaseline.get(path);
+			if (prevLocal !== undefined) nextLocalBaseline.set(path, prevLocal);
+		}
+		this.localBaseline = nextLocalBaseline;
 		this.lastLocal = new Map(local);
 		this.emitSnapshot(remoteEntries, local);
 	}
@@ -708,7 +794,13 @@ export class SyncedWorkspaceFs implements WorkspaceFs, SyncController {
 
 	private endIssueCycle(): void {
 		for (const id of [...this.issueMap.keys()]) {
-			if (!this.activeIssues.has(id)) this.issueMap.delete(id);
+			if (this.activeIssues.has(id)) continue;
+			// A failed write still pending retry must not be GC'd between re-reports.
+			if (id.startsWith('remote-write-failed:')) {
+				const path = id.slice('remote-write-failed:'.length);
+				if (this.pending.get(path)?.failed) continue;
+			}
+			this.issueMap.delete(id);
 		}
 		this.emitIssues();
 	}
